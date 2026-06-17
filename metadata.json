@@ -1,0 +1,6 @@
+{
+  "name": "Parcel Layout Designer",
+  "description": "A professional GIS Parcel Layout Designer for generating cadastre plans, coordinates, and PDF maps ready for Electron packaging.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
