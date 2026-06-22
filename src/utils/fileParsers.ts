@@ -133,54 +133,216 @@ export function convertGeoJSONToParsedFeatures(geojson: any, fallbackName: strin
 }
 
 /**
- * Real client-side KML Polygon/LineString parser using standard DOMParser.
+ * Real client-side KML Polygon/LineString parser using standard DOMParser,
+ * reinforced with ultimate regex fallbacks to parse even non-standard or malformed namespaces.
  */
 export function parseKML(text: string): ParsedFeature[] {
-  const parser = new DOMParser();
-  const xmlDoc = parser.parseFromString(text, "text/xml");
-  const placemarks = xmlDoc.getElementsByTagName("Placemark");
   const features: ParsedFeature[] = [];
 
-  for (let i = 0; i < placemarks.length; i++) {
-    const pm = placemarks[i];
+  try {
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(text, "text/xml");
     
-    // Get name & attributes
-    let name = "";
-    const nameNode = pm.getElementsByTagName("name")[0];
-    if (nameNode && nameNode.textContent) {
-      name = nameNode.textContent.trim();
-    }
+    // Check for parse errors
+    const parserError = xmlDoc.getElementsByTagName("parsererror")[0] || xmlDoc.getElementsByTagNameNS("*", "parsererror")[0];
+    if (!parserError) {
+      // Find placemarks case-insensitively, namespace-insensitively, and with fallbacks
+      let placemarks = Array.from(xmlDoc.getElementsByTagNameNS("*", "Placemark"));
+      if (placemarks.length === 0) {
+        placemarks = Array.from(xmlDoc.getElementsByTagNameNS("*", "placemark"));
+      }
+      if (placemarks.length === 0) {
+        placemarks = Array.from(xmlDoc.getElementsByTagName("Placemark"));
+      }
+      if (placemarks.length === 0) {
+        placemarks = Array.from(xmlDoc.getElementsByTagName("placemark"));
+      }
 
-    const attributes: Record<string, string> = {
-      ID: `KML-${i + 1}`,
-      Nom: name,
-      Source: "KML Import",
-    };
+      for (let i = 0; i < placemarks.length; i++) {
+        const pm = placemarks[i];
+        
+        // Get name & attributes with namespace-insensitive tags
+        let name = "";
+        let nameNode = pm.getElementsByTagNameNS("*", "name")[0] || 
+                       pm.getElementsByTagNameNS("*", "Name")[0] || 
+                       pm.getElementsByTagName("name")[0] || 
+                       pm.getElementsByTagName("Name")[0];
+                       
+        if (nameNode && nameNode.textContent) {
+          name = nameNode.textContent.trim().replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1");
+        }
 
-    // Parse extended data schemas if any exist
-    const dataNodes = pm.getElementsByTagName("SimpleData");
-    for (let d = 0; d < dataNodes.length; d++) {
-      const dataNode = dataNodes[d];
-      const attrName = dataNode.getAttribute("name");
-      if (attrName && dataNode.textContent) {
-        attributes[attrName] = dataNode.textContent.trim();
+        const attributes: Record<string, string> = {
+          ID: `KML-${i + 1}`,
+          Nom: name,
+          Source: "KML Import",
+        };
+
+        // Parse extended data schemas if any exist
+        let dataNodes = Array.from(pm.getElementsByTagNameNS("*", "SimpleData"));
+        if (dataNodes.length === 0) {
+          dataNodes = Array.from(pm.getElementsByTagName("SimpleData"));
+        }
+        for (let d = 0; d < dataNodes.length; d++) {
+          const dataNode = dataNodes[d];
+          const attrName = dataNode.getAttribute("name");
+          if (attrName && dataNode.textContent) {
+            attributes[attrName] = dataNode.textContent.trim();
+          }
+        }
+
+        // Now look for ALL <coordinates> nodes within this placemark (ignoring namespace)
+        let coordsNodes = Array.from(pm.getElementsByTagNameNS("*", "coordinates"));
+        if (coordsNodes.length === 0) {
+          coordsNodes = Array.from(pm.getElementsByTagNameNS("*", "Coordinates"));
+        }
+        if (coordsNodes.length === 0) {
+          coordsNodes = Array.from(pm.getElementsByTagName("coordinates"));
+        }
+        if (coordsNodes.length === 0) {
+          coordsNodes = Array.from(pm.getElementsByTagName("Coordinates"));
+        }
+
+        let geomIdx = 0;
+        for (let cIdx = 0; cIdx < coordsNodes.length; cIdx++) {
+          const coordsNode = coordsNodes[cIdx];
+          if (!coordsNode || !coordsNode.textContent) continue;
+
+          let rawCoords = coordsNode.textContent.trim();
+          if (!rawCoords) continue;
+
+          // Replace spaces around commas first
+          rawCoords = rawCoords.replace(/\s*,\s*/g, ",");
+          
+          // Coordinate sequences in KML are separated by whitespace
+          const coordinatePairs = rawCoords.split(/\s+/);
+          const vertices: { x: number; y: number }[] = [];
+
+          coordinatePairs.forEach((pair) => {
+            const parts = pair.split(",");
+            if (parts.length >= 2) {
+              const lng = parseFloat(parts[0]);
+              const lat = parseFloat(parts[1]);
+              if (!isNaN(lng) && !isNaN(lat)) {
+                vertices.push({ x: lng, y: lat });
+              }
+            }
+          });
+
+          // Clean winding coordinates (remove closing duplicate if any)
+          if (vertices.length > 3) {
+            const first = vertices[0];
+            const last = vertices[vertices.length - 1];
+            if (Math.abs(first.x - last.x) < 0.0001 && Math.abs(first.y - last.y) < 0.0001) {
+              vertices.pop();
+            }
+          }
+
+          if (vertices.length >= 3) {
+            const finalName = name 
+              ? (coordsNodes.length > 1 ? `${name} (Géométrie ${geomIdx + 1})` : name) 
+              : `Parcelle KML ${features.length + 1}`;
+            
+            // Dynamically detect if coordinates are geographic (degrees) rather than projected meters
+            const isGeog = vertices.every(v => Math.abs(v.x) <= 180 && Math.abs(v.y) <= 90);
+            
+            features.push({
+              name: finalName,
+              vertices,
+              isGeographic: isGeog,
+              attributes: { ...attributes, Nom: finalName },
+            });
+            geomIdx++;
+          }
+        }
       }
     }
+  } catch (err) {
+    console.error("DOMParser fallback for KML:", err);
+  }
 
-    // Now look for ALL <coordinates> nodes within this placemark to support LineString, Polygon, MultiGeometry, etc.
-    const coordsNodes = pm.getElementsByTagName("coordinates");
-    let geomIdx = 0;
-    for (let cIdx = 0; cIdx < coordsNodes.length; cIdx++) {
-      const coordsNode = coordsNodes[cIdx];
-      if (!coordsNode || !coordsNode.textContent) continue;
-
-      let rawCoords = coordsNode.textContent.trim();
-      if (!rawCoords) continue;
-
-      // Handle space variations: Replace spaces around commas first
-      rawCoords = rawCoords.replace(/\s*,\s*/g, ",");
+  // ULTIMATE FALLBACK: If XML DOM parser fails to extract features or errors out, parse via robust custom REGEX
+  if (features.length === 0) {
+    // Extract everything between Placemark tags, with case-insensitivity and optional namespace prefix
+    const pmRegex = /<([a-zA-Z0-9_]+:)?placemark[\s>][\s\S]*?<\/([a-zA-Z0-9_]+:)?placemark>/gi;
+    let match;
+    let index = 0;
+    while ((match = pmRegex.exec(text)) !== null) {
+      const pmContent = match[0];
       
-      // Coordinate sequences in KML are separated by whitespace (spaces, newlines, tabs)
+      // Parse name supporting optional namespace prefix
+      const nameMatch = pmContent.match(/<(?:[a-zA-Z0-9_]+:)?(?:name|Name)[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_]+:)?(?:name|Name)>/i);
+      let name = nameMatch ? nameMatch[1].trim() : "";
+      // Strip CDATA tags
+      name = name.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1");
+
+      const attributes: Record<string, string> = {
+        ID: `KML-REG-${index + 1}`,
+        Nom: name,
+        Source: "KML Regex Fallback",
+      };
+
+      // Extract SimpleData / ExtendedData attributes if any
+      const dataRegex = /<([a-zA-Z0-9_]+:)?SimpleData\s+name=["']([^"']+)["'][^>]*>([\s\S]*?)<\/([a-zA-Z0-9_]+:)?SimpleData>/gi;
+      let dMatch;
+      while ((dMatch = dataRegex.exec(pmContent)) !== null) {
+        const attrName = dMatch[2];
+        let attrValue = dMatch[3].trim();
+        attrValue = attrValue.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1");
+        attributes[attrName] = attrValue;
+      }
+
+      // Parse coordinates (inside Placemark) supporting namespace prefixes
+      const coordsRegex = /<(?:[a-zA-Z0-9_]+:)?(?:coordinates|Coordinates)[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_]+:)?(?:coordinates|Coordinates)>/i;
+      const coordsMatch = pmContent.match(coordsRegex);
+      if (coordsMatch) {
+        let rawCoords = coordsMatch[1].trim();
+        rawCoords = rawCoords.replace(/\s*,\s*/g, ",");
+        const coordinatePairs = rawCoords.split(/\s+/);
+        const vertices: { x: number; y: number }[] = [];
+
+        coordinatePairs.forEach((pair) => {
+          const parts = pair.split(",");
+          if (parts.length >= 2) {
+            const lng = parseFloat(parts[0]);
+            const lat = parseFloat(parts[1]);
+            if (!isNaN(lng) && !isNaN(lat)) {
+              vertices.push({ x: lng, y: lat });
+            }
+          }
+        });
+
+        if (vertices.length > 3) {
+          const first = vertices[0];
+          const last = vertices[vertices.length - 1];
+          if (Math.abs(first.x - last.x) < 0.0001 && Math.abs(first.y - last.y) < 0.0001) {
+            vertices.pop();
+          }
+        }
+
+        if (vertices.length >= 3) {
+          const finalName = name || `Parcelle KML Extrait ${features.length + 1}`;
+          const isGeog = vertices.every(v => Math.abs(v.x) <= 180 && Math.abs(v.y) <= 90);
+          features.push({
+            name: finalName,
+            vertices,
+            isGeographic: isGeog,
+            attributes: { ...attributes, Nom: finalName }
+          });
+        }
+      }
+      index++;
+    }
+  }
+
+  // GLOBAL ULTIMATE COORD SCANNING (If still has NO features, scan any coordinates block)
+  if (features.length === 0) {
+    const coordsRegexGlobal = /<(?:coordinates|Coordinates)[^>]*>([\s\S]*?)<\/(?:coordinates|Coordinates)>/gi;
+    let match;
+    let idx = 0;
+    while ((match = coordsRegexGlobal.exec(text)) !== null) {
+      let rawCoords = match[1].trim();
+      rawCoords = rawCoords.replace(/\s*,\s*/g, ",");
       const coordinatePairs = rawCoords.split(/\s+/);
       const vertices: { x: number; y: number }[] = [];
 
@@ -195,7 +357,6 @@ export function parseKML(text: string): ParsedFeature[] {
         }
       });
 
-      // Clean winding coordinates (remove closing duplicate if any)
       if (vertices.length > 3) {
         const first = vertices[0];
         const last = vertices[vertices.length - 1];
@@ -205,61 +366,75 @@ export function parseKML(text: string): ParsedFeature[] {
       }
 
       if (vertices.length >= 3) {
-        const finalName = name 
-          ? (coordsNodes.length > 1 ? `${name} (Geométrie ${geomIdx + 1})` : name) 
-          : `Parcelle KML ${features.length + 1}`;
+        const isGeog = vertices.every(v => Math.abs(v.x) <= 180 && Math.abs(v.y) <= 90);
         features.push({
-          name: finalName,
+          name: `Parcelle KML Brute #${idx + 1}`,
           vertices,
-          isGeographic: true, // KML always geographic (WGS84)
-          attributes: { ...attributes, Nom: finalName },
+          isGeographic: isGeog,
+          attributes: { Nom: `Parcelle KML Brute #${idx + 1}`, Source: "KML Direct Coord Regex Scan" },
         });
-        geomIdx++;
+        idx++;
       }
     }
   }
 
-  // If no Placemarks with coordinates, try searching coordinates globally in case of simpler KML structures
+  // POINT GROUPING FALLBACK: If NO complex geometries were loaded, check for individual <Point> placemarks!
   if (features.length === 0) {
-    const coordsNodes = xmlDoc.getElementsByTagName("coordinates");
-    for (let cIdx = 0; cIdx < coordsNodes.length; cIdx++) {
-      const coordsNode = coordsNodes[cIdx];
-      if (!coordsNode || !coordsNode.textContent) continue;
+    try {
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(text, "text/xml");
+      let placemarks = Array.from(xmlDoc.getElementsByTagNameNS("*", "Placemark"));
+      if (placemarks.length === 0) placemarks = Array.from(xmlDoc.getElementsByTagName("Placemark"));
       
-      let rawCoords = coordsNode.textContent.trim();
-      if (!rawCoords) continue;
+      const collectedPoints: { x: number; y: number; name: string }[] = [];
       
-      rawCoords = rawCoords.replace(/\s*,\s*/g, ",");
-      const coordinatePairs = rawCoords.split(/\s+/);
-      const vertices: { x: number; y: number }[] = [];
-      
-      coordinatePairs.forEach((pair) => {
-        const parts = pair.split(",");
-        if (parts.length >= 2) {
-          const lng = parseFloat(parts[0]);
-          const lat = parseFloat(parts[1]);
-          if (!isNaN(lng) && !isNaN(lat)) {
-            vertices.push({ x: lng, y: lat });
+      for (let i = 0; i < placemarks.length; i++) {
+        const pm = placemarks[i];
+        const pointNode = pm.getElementsByTagNameNS("*", "Point")[0] || pm.getElementsByTagName("Point")[0];
+        if (pointNode) {
+          let name = "";
+          const nameNode = pm.getElementsByTagNameNS("*", "name")[0] || pm.getElementsByTagName("name")[0];
+          if (nameNode && nameNode.textContent) {
+            name = nameNode.textContent.trim().replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1");
+          }
+          
+          const coordNode = pm.getElementsByTagNameNS("*", "coordinates")[0] || pm.getElementsByTagName("coordinates")[0];
+          if (coordNode && coordNode.textContent) {
+            let raw = coordNode.textContent.trim();
+            raw = raw.replace(/\s*,\s*/g, ",");
+            const firstCoord = raw.split(/\s+/)[0];
+            if (firstCoord) {
+              const parts = firstCoord.split(",");
+              if (parts.length >= 2) {
+                const x = parseFloat(parts[0]);
+                const y = parseFloat(parts[1]);
+                if (!isNaN(x) && !isNaN(y)) {
+                  collectedPoints.push({ x, y, name });
+                }
+              }
+            }
           }
         }
-      });
-      
-      if (vertices.length > 3) {
-        const first = vertices[0];
-        const last = vertices[vertices.length - 1];
-        if (Math.abs(first.x - last.x) < 0.0001 && Math.abs(first.y - last.y) < 0.0001) {
-          vertices.pop();
-        }
       }
       
-      if (vertices.length >= 3) {
+      if (collectedPoints.length >= 3) {
+        const vertices = collectedPoints.map(p => ({ x: p.x, y: p.y }));
+        const isGeog = vertices.every(v => Math.abs(v.x) <= 180 && Math.abs(v.y) <= 90);
+        
         features.push({
-          name: `Parcelle KML Globale #${features.length + 1}`,
+          name: "Collection de points KML",
           vertices,
-          isGeographic: true,
-          attributes: { Source: "KML Direct Coordinates" },
+          isGeographic: isGeog,
+          attributes: {
+            ID: "KML-POINTS",
+            Nom: "Collection de points KML",
+            Points: String(vertices.length),
+            Source: "KML Point-Group Fallback"
+          }
         });
       }
+    } catch (err) {
+      console.error("KML point-group fallback failed:", err);
     }
   }
 
@@ -585,6 +760,64 @@ export function parseDXF(text: string): ParsedFeature[] {
     }
   });
 
+  // Fallback: If no features were created, scan the DXF text directly for all sequential coordinate pairs
+  if (features.length === 0) {
+    const allX: number[] = [];
+    const allY: number[] = [];
+    
+    for (let pIdx = 0; pIdx < pairs.length - 1; pIdx++) {
+      const p = pairs[pIdx];
+      const next = pairs[pIdx + 1];
+      if (p.code === 10) {
+        const val = parseFloat(next.value);
+        if (!isNaN(val)) allX.push(val);
+      } else if (p.code === 20) {
+        const val = parseFloat(next.value);
+        if (!isNaN(val)) allY.push(val);
+      }
+    }
+    
+    const fallbackVertices: { x: number; y: number }[] = [];
+    const minLength = Math.min(allX.length, allY.length);
+    for (let vIdx = 0; vIdx < minLength; vIdx++) {
+      fallbackVertices.push({ x: allX[vIdx], y: allY[vIdx] });
+    }
+    
+    const uniqueVerts: { x: number; y: number }[] = [];
+    fallbackVertices.forEach((v) => {
+      if (uniqueVerts.length === 0) {
+        uniqueVerts.push(v);
+      } else {
+        const last = uniqueVerts[uniqueVerts.length - 1];
+        if (Math.abs(last.x - v.x) > 0.001 || Math.abs(last.y - v.y) > 0.001) {
+          uniqueVerts.push(v);
+        }
+      }
+    });
+
+    if (uniqueVerts.length > 3) {
+      const first = uniqueVerts[0];
+      const last = uniqueVerts[uniqueVerts.length - 1];
+      if (Math.abs(first.x - last.x) < 0.01 && Math.abs(first.y - last.y) < 0.01) {
+        uniqueVerts.pop();
+      }
+    }
+    
+    if (uniqueVerts.length >= 3) {
+      features.push({
+        name: "Contour DXF Récupéré",
+        vertices: uniqueVerts,
+        isGeographic: false,
+        attributes: {
+          ID: `DXF-RECUP`,
+          Type: "Contour Global de Remplacement",
+          Points: String(uniqueVerts.length),
+          Source: "DXF Scanner Fallback"
+        }
+      });
+    }
+  }
+
   return features;
 }
 
@@ -670,12 +903,17 @@ export function parseGPX(text: string): ParsedFeature[] {
   const xmlDoc = parser.parseFromString(text, "text/xml");
   const features: ParsedFeature[] = [];
 
-  // 1. Process Tracks (<trk>)
-  const tracks = xmlDoc.getElementsByTagName("trk");
+  // 1. Process Tracks (<trk>) supporting namespace prefixes and casing
+  let tracks = Array.from(xmlDoc.getElementsByTagNameNS("*", "trk"));
+  if (tracks.length === 0) tracks = Array.from(xmlDoc.getElementsByTagName("trk"));
+  if (tracks.length === 0) tracks = Array.from(xmlDoc.getElementsByTagNameNS("*", "TRK"));
+  if (tracks.length === 0) tracks = Array.from(xmlDoc.getElementsByTagName("TRK"));
+
   for (let i = 0; i < tracks.length; i++) {
     const trk = tracks[i];
     let name = "";
-    const nameNode = trk.getElementsByTagName("name")[0];
+    const nameNode = trk.getElementsByTagNameNS("*", "name")[0] || trk.getElementsByTagName("name")[0] ||
+                     trk.getElementsByTagNameNS("*", "NAME")[0] || trk.getElementsByTagName("NAME")[0];
     if (nameNode && nameNode.textContent) {
       name = nameNode.textContent.trim();
     }
@@ -683,16 +921,24 @@ export function parseGPX(text: string): ParsedFeature[] {
       name = `Trace GPX N°${i + 1}`;
     }
 
-    const segments = trk.getElementsByTagName("trkseg");
+    let segments = Array.from(trk.getElementsByTagNameNS("*", "trkseg"));
+    if (segments.length === 0) segments = Array.from(trk.getElementsByTagName("trkseg"));
+    if (segments.length === 0) segments = Array.from(trk.getElementsByTagNameNS("*", "TRKSEG"));
+    if (segments.length === 0) segments = Array.from(trk.getElementsByTagName("TRKSEG"));
+
     for (let sIdx = 0; sIdx < segments.length; sIdx++) {
       const seg = segments[sIdx];
-      const pts = seg.getElementsByTagName("trkpt");
+      let pts = Array.from(seg.getElementsByTagNameNS("*", "trkpt"));
+      if (pts.length === 0) pts = Array.from(seg.getElementsByTagName("trkpt"));
+      if (pts.length === 0) pts = Array.from(seg.getElementsByTagNameNS("*", "TRKPT"));
+      if (pts.length === 0) pts = Array.from(seg.getElementsByTagName("TRKPT"));
+
       const vertices: { x: number; y: number }[] = [];
       
       for (let pIdx = 0; pIdx < pts.length; pIdx++) {
         const pt = pts[pIdx];
-        const latAttr = pt.getAttribute("lat");
-        const lonAttr = pt.getAttribute("lon");
+        const latAttr = pt.getAttribute("lat") || pt.getAttribute("LAT");
+        const lonAttr = pt.getAttribute("lon") || pt.getAttribute("LON");
         if (latAttr && lonAttr) {
           const lat = parseFloat(latAttr);
           const lon = parseFloat(lonAttr);
@@ -713,10 +959,11 @@ export function parseGPX(text: string): ParsedFeature[] {
       }
 
       if (vertices.length >= 3) {
+        const isGeog = vertices.every(v => Math.abs(v.x) <= 180 && Math.abs(v.y) <= 90);
         features.push({
           name: segments.length > 1 ? `${name} (Segment ${sIdx + 1})` : name,
           vertices,
-          isGeographic: true,
+          isGeographic: isGeog,
           attributes: {
             Type: "Trace GPX",
             Points: String(vertices.length),
@@ -727,12 +974,17 @@ export function parseGPX(text: string): ParsedFeature[] {
     }
   }
 
-  // 2. Process Routes (<rte>)
-  const routes = xmlDoc.getElementsByTagName("rte");
+  // 2. Process Routes (<rte>) supporting namespaces and casing
+  let routes = Array.from(xmlDoc.getElementsByTagNameNS("*", "rte"));
+  if (routes.length === 0) routes = Array.from(xmlDoc.getElementsByTagName("rte"));
+  if (routes.length === 0) routes = Array.from(xmlDoc.getElementsByTagNameNS("*", "RTE"));
+  if (routes.length === 0) routes = Array.from(xmlDoc.getElementsByTagName("RTE"));
+
   for (let rIdx = 0; rIdx < routes.length; rIdx++) {
     const rte = routes[rIdx];
     let name = "";
-    const nameNode = rte.getElementsByTagName("name")[0];
+    const nameNode = rte.getElementsByTagNameNS("*", "name")[0] || rte.getElementsByTagName("name")[0] ||
+                     rte.getElementsByTagNameNS("*", "NAME")[0] || rte.getElementsByTagName("NAME")[0];
     if (nameNode && nameNode.textContent) {
       name = nameNode.textContent.trim();
     }
@@ -740,12 +992,16 @@ export function parseGPX(text: string): ParsedFeature[] {
       name = `Route GPX N°${rIdx + 1}`;
     }
 
-    const pts = rte.getElementsByTagName("rtept");
+    let pts = Array.from(rte.getElementsByTagNameNS("*", "rtept"));
+    if (pts.length === 0) pts = Array.from(rte.getElementsByTagName("rtept"));
+    if (pts.length === 0) pts = Array.from(rte.getElementsByTagNameNS("*", "RTEPT"));
+    if (pts.length === 0) pts = Array.from(rte.getElementsByTagName("RTEPT"));
+
     const vertices: { x: number; y: number }[] = [];
     for (let pIdx = 0; pIdx < pts.length; pIdx++) {
       const pt = pts[pIdx];
-      const latAttr = pt.getAttribute("lat");
-      const lonAttr = pt.getAttribute("lon");
+      const latAttr = pt.getAttribute("lat") || pt.getAttribute("LAT");
+      const lonAttr = pt.getAttribute("lon") || pt.getAttribute("LON");
       if (latAttr && lonAttr) {
         const lat = parseFloat(latAttr);
         const lon = parseFloat(lonAttr);
@@ -764,10 +1020,11 @@ export function parseGPX(text: string): ParsedFeature[] {
     }
 
     if (vertices.length >= 3) {
+      const isGeog = vertices.every(v => Math.abs(v.x) <= 180 && Math.abs(v.y) <= 90);
       features.push({
         name,
         vertices,
-        isGeographic: true,
+        isGeographic: isGeog,
         attributes: {
           Type: "Route GPX",
           Points: String(vertices.length),
@@ -779,12 +1036,16 @@ export function parseGPX(text: string): ParsedFeature[] {
 
   // 3. Process Waypoints Fallback (<wpt>) if no track or route structures exist
   if (features.length === 0) {
-    const wpts = xmlDoc.getElementsByTagName("wpt");
+    let wpts = Array.from(xmlDoc.getElementsByTagNameNS("*", "wpt"));
+    if (wpts.length === 0) wpts = Array.from(xmlDoc.getElementsByTagName("wpt"));
+    if (wpts.length === 0) wpts = Array.from(xmlDoc.getElementsByTagNameNS("*", "WPT"));
+    if (wpts.length === 0) wpts = Array.from(xmlDoc.getElementsByTagName("WPT"));
+
     const vertices: { x: number; y: number }[] = [];
     for (let wIdx = 0; wIdx < wpts.length; wIdx++) {
       const wpt = wpts[wIdx];
-      const latAttr = wpt.getAttribute("lat");
-      const lonAttr = wpt.getAttribute("lon");
+      const latAttr = wpt.getAttribute("lat") || wpt.getAttribute("LAT");
+      const lonAttr = wpt.getAttribute("lon") || wpt.getAttribute("LON");
       if (latAttr && lonAttr) {
         const lat = parseFloat(latAttr);
         const lon = parseFloat(lonAttr);
@@ -803,14 +1064,63 @@ export function parseGPX(text: string): ParsedFeature[] {
     }
 
     if (vertices.length >= 3) {
+      const isGeog = vertices.every(v => Math.abs(v.x) <= 180 && Math.abs(v.y) <= 90);
       features.push({
         name: "Points GPX Globaux",
         vertices,
-        isGeographic: true,
+        isGeographic: isGeog,
         attributes: {
           Type: "Waypoints GPX",
           Points: String(vertices.length),
           Source: "GPX Import - Waypoints",
+        }
+      });
+    }
+  }
+
+  // 4. Regex General Fallback (Catches custom or complex non-standard GPX namespaces)
+  if (features.length === 0) {
+    const pts: { x: number; y: number }[] = [];
+    const ptRegex = /<(?:[a-zA-Z0-9_]+:)?(?:trkpt|rtept|wpt|pt)\s+[^>]*(?:lat|LAT)=["'](-?\d+\.?\d*)["']\s+[^>]*(?:lon|LON)=["'](-?\d+\.?\d*)["']/gi;
+    let match;
+    while ((match = ptRegex.exec(text)) !== null) {
+      const lat = parseFloat(match[1]);
+      const lon = parseFloat(match[2]);
+      if (!isNaN(lat) && !isNaN(lon)) {
+        pts.push({ x: lon, y: lat });
+      }
+    }
+    
+    // Try the other way around: lon then lat
+    if (pts.length === 0) {
+      const ptRegex2 = /<(?:[a-zA-Z0-9_]+:)?(?:trkpt|rtept|wpt|pt)\s+[^>]*(?:lon|LON)=["'](-?\d+\.?\d*)["']\s+[^>]*(?:lat|LAT)=["'](-?\d+\.?\d*)["']/gi;
+      while ((match = ptRegex2.exec(text)) !== null) {
+        const lon = parseFloat(match[1]);
+        const lat = parseFloat(match[2]);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          pts.push({ x: lon, y: lat });
+        }
+      }
+    }
+
+    if (pts.length > 3) {
+      const first = pts[0];
+      const last = pts[pts.length - 1];
+      if (Math.abs(first.x - last.x) < 0.001 && Math.abs(first.y - last.y) < 0.001) {
+        pts.pop();
+      }
+    }
+
+    if (pts.length >= 3) {
+      const isGeog = pts.every(v => Math.abs(v.x) <= 180 && Math.abs(v.y) <= 90);
+      features.push({
+        name: "Trace GPX Extrait",
+        vertices: pts,
+        isGeographic: isGeog,
+        attributes: {
+          Type: "GPX Regex Extrait",
+          Points: String(pts.length),
+          Source: "GPX Regex Fallback",
         }
       });
     }
@@ -1015,23 +1325,84 @@ export function parseTabularData(rows: any[][], fileName: string): ParsedFeature
 
 /**
  * Client-side CSV text parser.
+ * Specifically optimized for the topographer's P1;X1;Y1 format.
  */
 export function parseCSV(text: string, fileName: string): ParsedFeature[] {
-  const lines = text.split(/\r?\n/);
-  const rows: any[][] = [];
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   
-  lines.forEach((line) => {
-    if (!line.trim()) return;
-
-    // Smart delimiter detection
-    let delimiter = ",";
-    if (line.includes("\t")) {
-      delimiter = "\t";
-    } else if (line.includes(";")) {
-      delimiter = ";";
+  // Custom check: is it structured as P1;X1;Y1 where second and third can be floats?
+  let isSemicolonPXY = false;
+  let matchesCount = 0;
+  
+  for (const line of lines) {
+    const parts = line.split(";");
+    if (parts.length >= 3) {
+      const xStr = parts[1].trim().replace(",", ".");
+      const yStr = parts[2].trim().replace(",", ".");
+      const xVal = parseFloat(xStr);
+      const yVal = parseFloat(yStr);
+      if (!isNaN(xVal) && !isNaN(yVal)) {
+        matchesCount++;
+      }
     }
-
-    // Process cells with quotation marks support
+  }
+  
+  if (matchesCount >= 3 || (lines.length > 0 && matchesCount === lines.length)) {
+    isSemicolonPXY = true;
+  }
+  
+  if (isSemicolonPXY) {
+    const vertices: { x: number; y: number }[] = [];
+    
+    lines.forEach((line) => {
+      const parts = line.split(";");
+      if (parts.length >= 3) {
+        const xVal = parseFloat(parts[1].trim().replace(",", "."));
+        const yVal = parseFloat(parts[2].trim().replace(",", "."));
+        if (!isNaN(xVal) && !isNaN(yVal)) {
+          vertices.push({ x: xVal, y: yVal });
+        }
+      }
+    });
+    
+    if (vertices.length >= 3) {
+      const first = vertices[0];
+      const last = vertices[vertices.length - 1];
+      if (Math.abs(first.x - last.x) < 0.005 && Math.abs(first.y - last.y) < 0.005) {
+        vertices.pop();
+      }
+      
+      let looksGeographic = true;
+      for (const v of vertices) {
+        if (Math.abs(v.x) > 180 || Math.abs(v.y) > 90) {
+          looksGeographic = false;
+          break;
+        }
+      }
+      
+      return [{
+        name: `Import CSV (${fileName.replace(/\.[^/.]+$/, "")})`,
+        vertices,
+        isGeographic: looksGeographic,
+        attributes: {
+          Format: "Arpentage CSV (P;X;Y)",
+          Points: String(vertices.length),
+          Source: "CSV Delimited Import"
+        }
+      }];
+    }
+  }
+  
+  // Standard CSV parser fallback if not strictly P1;X1;Y1
+  const rows: any[][] = [];
+  lines.forEach((line) => {
+    let delimiter = ",";
+    if (line.includes(";")) {
+      delimiter = ";";
+    } else if (line.includes("\t")) {
+      delimiter = "\t";
+    }
+    
     const row: string[] = [];
     let insideQuotes = false;
     let cell = "";
@@ -1050,12 +1421,13 @@ export function parseCSV(text: string, fileName: string): ParsedFeature[] {
     row.push(cell.trim());
     rows.push(row);
   });
-
+  
   return parseTabularData(rows, fileName);
 }
 
 /**
  * Client-side binary Excel reader using SheetJS.
+ * Specifically optimised to detect cells formatted as P1|X1|Y1 inside.
  */
 export function parseExcel(buffer: ArrayBuffer, fileName: string): ParsedFeature[] {
   const data = new Uint8Array(buffer);
@@ -1067,5 +1439,522 @@ export function parseExcel(buffer: ArrayBuffer, fileName: string): ParsedFeature
   const worksheet = workbook.Sheets[firstSheetName];
   const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
 
-  return parseTabularData(rows, fileName);
+  const vertices: { x: number; y: number }[] = [];
+
+  rows.forEach((row) => {
+    if (!row || row.length === 0) return;
+    const cellVal = String(row[0] || "").trim();
+    if (cellVal.includes("|")) {
+      const parts = cellVal.split("|").map(p => p.trim());
+      if (parts.length >= 3) {
+        const xStr = parts[1].replace(",", ".");
+        const yStr = parts[2].replace(",", ".");
+        const xVal = parseFloat(xStr);
+        const yVal = parseFloat(yStr);
+        if (!isNaN(xVal) && !isNaN(yVal)) {
+          vertices.push({ x: xVal, y: yVal });
+        }
+      }
+    } else if (row.length >= 3) {
+      const xVal = parseFloat(String(row[1] || "").trim().replace(",", "."));
+      const yVal = parseFloat(String(row[2] || "").trim().replace(",", "."));
+      if (!isNaN(xVal) && !isNaN(yVal)) {
+        vertices.push({ x: xVal, y: yVal });
+      }
+    }
+  });
+
+  if (vertices.length >= 3) {
+    const first = vertices[0];
+    const last = vertices[vertices.length - 1];
+    if (Math.abs(first.x - last.x) < 0.005 && Math.abs(first.y - last.y) < 0.005) {
+      vertices.pop();
+    }
+    
+    let looksGeographic = true;
+    for (const v of vertices) {
+      if (Math.abs(v.x) > 180 || Math.abs(v.y) > 90) {
+        looksGeographic = false;
+        break;
+      }
+    }
+
+    return [{
+      name: `Import Excel (${fileName.replace(/\.[^/.]+$/, "")})`,
+      vertices,
+      isGeographic: looksGeographic,
+      attributes: {
+        Format: "Excel Pipe Format (P|X|Y)",
+        Points: String(vertices.length),
+        Source: "Excel Sheet Import"
+      }
+    }];
+  }
+
+  // Fallback to standard tabular
+  const processedRows: any[][] = [];
+  rows.forEach((row) => {
+    if (!row) return;
+    for (let c = 0; c < row.length; c++) {
+      const cellVal = String(row[c] || "").trim();
+      if (cellVal.includes("|")) {
+        const parts = cellVal.split("|").map(p => p.trim());
+        if (parts.length >= 3) {
+          const xVal = parseFloat(parts[1].replace(",", "."));
+          const yVal = parseFloat(parts[2].replace(",", "."));
+          if (!isNaN(xVal) && !isNaN(yVal)) {
+            processedRows.push(parts);
+            return;
+          }
+        }
+      }
+    }
+    processedRows.push(row);
+  });
+
+  return parseTabularData(processedRows, fileName);
+}
+
+interface TableSchema {
+  tableName: string;
+  columns: string[];
+}
+
+function readVarint(view: DataView, offset: number): { value: number; size: number } {
+  let value = 0;
+  let size = 0;
+  while (size < 9) {
+    const b = view.getUint8(offset + size);
+    size++;
+    if (size === 9) {
+      value = value * 256 + b;
+      break;
+    }
+    value = value * 128 + (b & 0x7f);
+    if ((b & 0x80) === 0) {
+      break;
+    }
+  }
+  return { value, size };
+}
+
+function parseWkbGeometry(view: DataView, offset: number): { x: number; y: number }[] | null {
+  if (offset + 5 > view.byteLength) return null;
+  const littleEndian = view.getUint8(offset) === 1;
+  const geomType = view.getUint32(offset + 1, littleEndian);
+  
+  let ptr = offset + 5;
+  
+  if (geomType === 3) { // Polygon
+    if (ptr + 4 > view.byteLength) return null;
+    const numRings = view.getUint32(ptr, littleEndian);
+    ptr += 4;
+    if (numRings === 0) return null;
+    
+    // We only need the outer/first ring coordinates
+    if (ptr + 4 > view.byteLength) return null;
+    const numPoints = view.getUint32(ptr, littleEndian);
+    ptr += 4;
+    
+    if (ptr + numPoints * 16 > view.byteLength) return null;
+    const vertices: { x: number; y: number }[] = [];
+    for (let p = 0; p < numPoints; p++) {
+      const x = view.getFloat64(ptr, littleEndian);
+      const y = view.getFloat64(ptr + 8, littleEndian);
+      vertices.push({ x, y });
+      ptr += 16;
+    }
+    return vertices;
+  }
+  
+  if (geomType === 6) { // MultiPolygon
+    if (ptr + 4 > view.byteLength) return null;
+    const numPolygons = view.getUint32(ptr, littleEndian);
+    ptr += 4;
+    if (numPolygons === 0) return null;
+    
+    // Parse first polygon structure
+    return parseWkbGeometry(view, ptr);
+  }
+  
+  if (geomType === 2) { // LineString
+    if (ptr + 4 > view.byteLength) return null;
+    const numPoints = view.getUint32(ptr, littleEndian);
+    ptr += 4;
+    if (ptr + numPoints * 16 > view.byteLength) return null;
+    
+    const vertices: { x: number; y: number }[] = [];
+    for (let p = 0; p < numPoints; p++) {
+      const x = view.getFloat64(ptr, littleEndian);
+      const y = view.getFloat64(ptr + 8, littleEndian);
+      vertices.push({ x, y });
+      ptr += 16;
+    }
+    return vertices;
+  }
+  
+  return null;
+}
+
+function parseGpkgGeometry(blob: Uint8Array): { x: number; y: number }[] | null {
+  if (blob.length < 8) return null;
+  if (blob[0] !== 0x47 || blob[1] !== 0x50) return null; // "GP" magic
+  
+  const flags = blob[3];
+  const envelopeType = flags & 0x07;
+  let envelopeSize = 0;
+  if (envelopeType === 1) envelopeSize = 32;
+  else if (envelopeType === 2) envelopeSize = 48;
+  else if (envelopeType === 3) envelopeSize = 48;
+  else if (envelopeType === 4) envelopeSize = 64;
+  
+  const wkbOffset = 8 + envelopeSize;
+  if (wkbOffset >= blob.length) return null;
+  
+  const view = new DataView(blob.buffer, blob.byteOffset + wkbOffset, blob.length - wkbOffset);
+  return parseWkbGeometry(view, 0);
+}
+
+/**
+ * Client-side GeoPackage (.gpkg) file reader.
+ * Direct SQLite B-tree leaf page scanner that decodes standard relational SQL tables
+ * to extract GIS polygons with all their textual attribute tables intact!
+ */
+export function parseGeoPackage(buffer: ArrayBuffer): ParsedFeature[] {
+  const view = new DataView(buffer);
+  const len = buffer.byteLength;
+  const features: ParsedFeature[] = [];
+  
+  // 1. Detect SQLite page size (offset 16 of the SQLite header)
+  if (len < 100) return [];
+  const pageSize = view.getUint16(16, false);
+  if (pageSize < 512 || pageSize > 65536 || (pageSize & (pageSize - 1)) !== 0) {
+    return []; // invalid SQLite page size
+  }
+  
+  // 2. Decode the first page or the SQL text to extract user data CREATE TABLE schemas
+  const schemas: TableSchema[] = [];
+  try {
+    const ascii = new TextDecoder("utf-8", { fatal: false }).decode(new Uint8Array(buffer));
+    const createTableRegex = /CREATE\s+TABLE\s+["']?([\w\d_.-]+)["']?\s*\(/gi;
+    let match;
+    while ((match = createTableRegex.exec(ascii)) !== null) {
+      const tableName = match[1];
+      if (tableName.startsWith("gpkg_") || tableName.startsWith("sqlite_")) {
+        continue; // skip metadata/index schemas
+      }
+      
+      // Find the matching end parenthesis of the table definition
+      let depth = 1;
+      let index = createTableRegex.lastIndex;
+      let columnPart = "";
+      while (index < ascii.length && depth > 0) {
+        const char = ascii[index];
+        if (char === "(") depth++;
+        else if (char === ")") depth--;
+        if (depth > 0) {
+          columnPart += char;
+        }
+        index++;
+      }
+      
+      // Split columns by comma accounting for nested parentheses in types (e.g. VARCHAR(255))
+      const columns: string[] = [];
+      let currentField = "";
+      let parenDepth = 0;
+      for (let cIdx = 0; cIdx < columnPart.length; cIdx++) {
+        const char = columnPart[cIdx];
+        if (char === "(") parenDepth++;
+        if (char === ")") parenDepth--;
+        if (char === "," && parenDepth === 0) {
+          const parts = currentField.trim().split(/\s+/);
+          if (parts.length > 0) {
+            const col = parts[0].replace(/["']/g, "").trim();
+            if (col) {
+              const upperCol = col.toUpperCase();
+              if (!["CONSTRAINT", "PRIMARY", "UNIQUE", "CHECK", "FOREIGN"].includes(upperCol)) {
+                columns.push(col);
+              }
+            }
+          }
+          currentField = "";
+        } else {
+          currentField += char;
+        }
+      }
+      if (currentField.trim()) {
+        const parts = currentField.trim().split(/\s+/);
+        if (parts.length > 0) {
+          const col = parts[0].replace(/["']/g, "").trim();
+          if (col) {
+            const upperCol = col.toUpperCase();
+            if (!["CONSTRAINT", "PRIMARY", "UNIQUE", "CHECK", "FOREIGN"].includes(upperCol)) {
+              columns.push(col);
+            }
+          }
+        }
+      }
+      
+      schemas.push({ tableName, columns });
+    }
+  } catch (err) {
+    console.error("Error reading schemas:", err);
+  }
+  
+  const userSchemas = schemas.filter(s => !s.tableName.startsWith("gpkg_") && !s.tableName.startsWith("sqlite_"));
+  
+  // 3. Scan database pages for Table B-Tree Leaf Pages (Page Type 0x0D = 13)
+  for (let pageIdx = 0; pageIdx * pageSize < len; pageIdx++) {
+    const pageOffset = pageIdx * pageSize;
+    const headerOffset = pageIdx === 0 ? 100 : 0;
+    const absHeaderOffset = pageOffset + headerOffset;
+    
+    if (absHeaderOffset >= len) break;
+    
+    const pageType = view.getUint8(absHeaderOffset);
+    if (pageType === 0x0D) { // Table B-Tree Leaf Page
+      const cellCount = view.getUint16(absHeaderOffset + 3, false);
+      
+      for (let c = 0; c < cellCount; c++) {
+        const cellPointerOffset = absHeaderOffset + 8 + c * 2;
+        if (cellPointerOffset + 2 > len) continue;
+        
+        const cellPageOffset = view.getUint16(cellPointerOffset, false);
+        const absCellOffset = pageOffset + cellPageOffset;
+        if (absCellOffset >= len) continue;
+        
+        try {
+          let ptr = absCellOffset;
+          const payloadSizeVarint = readVarint(view, ptr);
+          ptr += payloadSizeVarint.size;
+          
+          const rowIdVarint = readVarint(view, ptr);
+          ptr += rowIdVarint.size;
+          
+          const payloadOffset = ptr;
+          const headerSizeVarint = readVarint(view, payloadOffset);
+          const headerSize = headerSizeVarint.value;
+          
+          const serialTypes: number[] = [];
+          let headerPtr = payloadOffset + headerSizeVarint.size;
+          const headerEnd = payloadOffset + headerSize;
+          
+          while (headerPtr < headerEnd && headerPtr < len) {
+            const typeVarint = readVarint(view, headerPtr);
+            serialTypes.push(typeVarint.value);
+            headerPtr += typeVarint.size;
+          }
+          
+          let dataPtr = payloadOffset + headerSize;
+          const cellValues: any[] = [];
+          
+          for (const t of serialTypes) {
+            if (t === 0) {
+              cellValues.push(null);
+            } else if (t === 1) {
+              if (dataPtr < len) {
+                cellValues.push(view.getInt8(dataPtr));
+                dataPtr += 1;
+              } else { cellValues.push(null); }
+            } else if (t === 2) {
+              if (dataPtr + 2 <= len) {
+                cellValues.push(view.getInt16(dataPtr, false));
+                dataPtr += 2;
+              } else { cellValues.push(null); }
+            } else if (t === 3) {
+              if (dataPtr + 3 <= len) {
+                const b0 = view.getUint8(dataPtr);
+                const b1 = view.getUint8(dataPtr + 1);
+                const b2 = view.getUint8(dataPtr + 2);
+                let val = (b0 << 16) | (b1 << 8) | b2;
+                if (val & 0x800000) val |= 0xff000000;
+                cellValues.push(val);
+                dataPtr += 3;
+              } else { cellValues.push(null); }
+            } else if (t === 4) {
+              if (dataPtr + 4 <= len) {
+                cellValues.push(view.getInt32(dataPtr, false));
+                dataPtr += 4;
+              } else { cellValues.push(null); }
+            } else if (t === 5) {
+              if (dataPtr + 6 <= len) {
+                const high = view.getInt16(dataPtr, false);
+                const low = view.getUint32(dataPtr + 2, false);
+                cellValues.push(high * 4294967296 + low);
+                dataPtr += 6;
+              } else { cellValues.push(null); }
+            } else if (t === 6) {
+              if (dataPtr + 8 <= len) {
+                const val = Number(view.getBigInt64(dataPtr, false));
+                cellValues.push(val);
+                dataPtr += 8;
+              } else { cellValues.push(null); }
+            } else if (t === 7) {
+              if (dataPtr + 8 <= len) {
+                cellValues.push(view.getFloat64(dataPtr, false));
+                dataPtr += 8;
+              } else { cellValues.push(null); }
+            } else if (t === 8) {
+              cellValues.push(0);
+            } else if (t === 9) {
+              cellValues.push(1);
+            } else if (t >= 12 && t % 2 === 0) {
+              const blobSize = (t - 12) / 2;
+              if (dataPtr + blobSize <= len) {
+                cellValues.push(new Uint8Array(buffer, dataPtr, blobSize));
+                dataPtr += blobSize;
+              } else { cellValues.push(null); }
+            } else if (t >= 13 && t % 2 === 1) {
+              const strSize = (t - 13) / 2;
+              if (dataPtr + strSize <= len) {
+                const bytes = new Uint8Array(buffer, dataPtr, strSize);
+                const strVal = new TextDecoder("utf-8").decode(bytes);
+                cellValues.push(strVal);
+                dataPtr += strSize;
+              } else { cellValues.push(null); }
+            } else {
+              cellValues.push(null);
+            }
+          }
+          
+          let ringCoords: { x: number; y: number }[] | null = null;
+          let geometryColIndex = -1;
+          
+          for (let cellIdx = 0; cellIdx < cellValues.length; cellIdx++) {
+            const val = cellValues[cellIdx];
+            if (val instanceof Uint8Array && val.length > 8 && val[0] === 0x47 && val[1] === 0x50) {
+              const parsedGeom = parseGpkgGeometry(val);
+              if (parsedGeom && parsedGeom.length >= 3) {
+                ringCoords = parsedGeom;
+                geometryColIndex = cellIdx;
+                break;
+              }
+            }
+          }
+          
+          if (ringCoords) {
+            let matchedSchema: TableSchema | undefined;
+            const matchingSchemas = userSchemas.filter(s => s.columns.length === cellValues.length);
+            if (matchingSchemas.length === 1) {
+              matchedSchema = matchingSchemas[0];
+            } else if (userSchemas.length === 1) {
+              matchedSchema = userSchemas[0];
+            } else {
+              matchedSchema = userSchemas.find(s => {
+                const geomColName = s.columns[geometryColIndex]?.toLowerCase();
+                return geomColName && ["geom", "geometry", "shape", "the_geom"].includes(geomColName);
+              });
+              // Fallback to the first user schema if still undefined
+              if (!matchedSchema && userSchemas.length > 0) {
+                matchedSchema = userSchemas[0];
+              }
+            }
+            
+            const attributes: Record<string, string> = {
+              Source: "GeoPackage Import",
+            };
+            let proposedName = "";
+            
+            for (let colIdx = 0; colIdx < cellValues.length; colIdx++) {
+              if (colIdx === geometryColIndex) continue;
+              
+              const colName = (matchedSchema && matchedSchema.columns[colIdx]) ? matchedSchema.columns[colIdx] : `Col_${colIdx + 1}`;
+              const rawVal = cellValues[colIdx];
+              
+              if (rawVal !== null && rawVal !== undefined) {
+                const valStr = String(rawVal).trim();
+                attributes[colName] = valStr;
+                
+                const lowerCol = colName.toLowerCase();
+                if (!proposedName && ["nom", "name", "id", "fid", "numero", "num", "parcelle", "ref", "section", "libelle"].some(k => lowerCol.includes(k))) {
+                  proposedName = valStr;
+                }
+              }
+            }
+            
+            const finalName = proposedName || `Parcelle GPKG ${features.length + 1}`;
+            attributes["Nom"] = finalName;
+            
+            const firstP = ringCoords[0];
+            const lastP = ringCoords[ringCoords.length - 1];
+            if (Math.abs(firstP.x - lastP.x) < 0.01 && Math.abs(firstP.y - lastP.y) < 0.01) {
+              ringCoords.pop();
+            }
+            
+            // Geographic standard coordinates check (degrees of longitude / latitude)
+            const isGeog = ringCoords.every(v => Math.abs(v.x) <= 180 && Math.abs(v.y) <= 90);
+            
+            // Prevent exact duplicates of the same parcel from multiple index pages
+            const isDup = features.some(f => 
+              f.vertices.length === ringCoords!.length && 
+              Math.abs(f.vertices[0].x - ringCoords![0].x) < 0.001 &&
+              Math.abs(f.vertices[0].y - ringCoords![0].y) < 0.001
+            );
+            
+            if (!isDup && ringCoords.length >= 3) {
+              features.push({
+                name: finalName,
+                vertices: ringCoords,
+                isGeographic: isGeog,
+                attributes
+              });
+            }
+          }
+        } catch (e) {
+          console.error("Error decoding page cell:", e);
+        }
+      }
+    }
+  }
+  
+  // High-speed binary coordinate-scanning fallback in case no database B-Tree cells were reachable or read
+  if (features.length === 0) {
+    let i = 0;
+    const maxSearch = len - 48;
+    while (i < maxSearch) {
+      let pts: { x: number; y: number }[] = [];
+      let cur = i;
+      while (cur < len - 16) {
+        const x = view.getFloat64(cur, true);
+        const y = view.getFloat64(cur + 8, true);
+        const isProj = x >= 50000 && x <= 950000 && y >= 50000 && y <= 950000;
+        const isGeog = x >= -18.0 && x <= 0.0 && y >= 20.0 && y <= 36.5;
+        if (isProj || isGeog) {
+          pts.push({ x, y });
+          cur += 16;
+        } else {
+          break;
+        }
+      }
+      if (pts.length >= 3) {
+        const uniqueX = new Set(pts.map(p => p.x.toFixed(3)));
+        const uniqueY = new Set(pts.map(p => p.y.toFixed(3)));
+        if (uniqueX.size > 2 && uniqueY.size > 2) {
+          const first = pts[0];
+          const last = pts[pts.length - 1];
+          if (Math.abs(first.x - last.x) < 0.01 && Math.abs(first.y - last.y) < 0.01) {
+            pts.pop();
+          }
+          if (pts.length >= 3) {
+            const isGeographic = pts[0].x >= -18.0 && pts[0].x <= 0.0;
+            features.push({
+              name: `GeoPackage Parcelle #${features.length + 1}`,
+              vertices: pts,
+              isGeographic,
+              attributes: {
+                ID: `GPKG-${features.length + 1}`,
+                Source: "GeoPackage Direct Binary Import",
+                Points: String(pts.length)
+              }
+            });
+          }
+        }
+        i = cur + 8;
+      } else {
+        i += 8;
+      }
+    }
+  }
+  
+  return features;
 }

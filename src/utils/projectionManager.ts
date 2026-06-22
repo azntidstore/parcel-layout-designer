@@ -25,6 +25,9 @@ proj4.defs(
   "+proj=lcc +lat_1=26.1 +lat_0=26.1 +lon_0=-5.4 +k_0=0.999616304 +x_0=1200000 +y_0=400000 +ellps=clrk80ign +units=m +no_defs"
 );
 
+// Register standard WGS84 for explicit conversions
+proj4.defs("EPSG:4326", "+proj=longlat +datum=WGS84 +no_defs");
+
 export type SupportedCRS = "EPSG:26191" | "EPSG:26192" | "EPSG:26193" | "EPSG:26194" | "EPSG:4326";
 
 export const CRS_DETAILS = {

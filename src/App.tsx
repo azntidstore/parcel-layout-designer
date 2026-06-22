@@ -10,14 +10,13 @@ import { ParcelMap } from "./components/ParcelMap";
 import { PrintSheetLayout } from "./components/PrintSheetLayout";
 import { AboutPage } from "./components/AboutPage";
 import {
-  parseKML,
   parseDXF,
   parseGeoJSON,
   convertGeoJSONToParsedFeatures,
   ParsedFeature,
-  parseGPX,
   parseCSV,
   parseExcel,
+  parseGeoPackage,
 } from "./utils/fileParsers";
 import { translations } from "./utils/translations";
 import {
@@ -576,7 +575,7 @@ export default function App() {
     };
 
     try {
-      // Scenario D: Any other individual file (GeoJSON, KML, DXF, GPX, CSV, Excel)
+      // Scenario D: Any other individual file (GeoJSON, KML, DXF, CSV, Excel)
       const primaryFile = files[0];
       if (primaryFile) {
         const extension = primaryFile.name.substring(primaryFile.name.lastIndexOf(".")).toLowerCase();
@@ -597,16 +596,25 @@ export default function App() {
           return;
         }
 
+        if (extension === ".gpkg") {
+          reader.onload = (event) => {
+            try {
+              const buffer = event.target?.result as ArrayBuffer;
+              const parsed = parseGeoPackage(buffer);
+              processFeatures(parsed, "GeoPackage (.gpkg)", primaryFile.name);
+            } catch (err) {
+              console.error(err);
+              alert("Erreur: Impossible de lire ou analyser ce fichier GeoPackage.");
+            }
+          };
+          reader.readAsArrayBuffer(primaryFile);
+          return;
+        }
+
         reader.onload = (event) => {
           const content = event.target?.result as string;
           try {
-            if (extension === ".kml") {
-              const parsed = parseKML(content);
-              processFeatures(parsed, "KML", primaryFile.name, "EPSG:4326");
-            } else if (extension === ".gpx") {
-              const parsed = parseGPX(content);
-              processFeatures(parsed, "GPX", primaryFile.name, "EPSG:4326");
-            } else if (extension === ".csv") {
+            if (extension === ".csv") {
               const parsed = parseCSV(content, primaryFile.name);
               processFeatures(parsed, "CSV", primaryFile.name);
             } else if (extension === ".dxf") {
@@ -824,7 +832,7 @@ export default function App() {
               <p className="text-[10px] text-slate-400 leading-relaxed">
                 Importation de levés topographiques multi-formats :
                 <span className="block mt-1 text-[9.5px] font-mono text-emerald-400 font-bold">
-                  • KML • GPX • DXF • SHAPEFILE (.shp/.zip) • GeoJSON • CSV • EXCEL (.xlsx/.xls)
+                  • DXF • GEOPACKAGE (.gpkg) • GeoJSON • CSV • EXCEL (.xlsx/.xls)
                 </span>
               </p>
               <div
@@ -833,11 +841,11 @@ export default function App() {
               >
                 <Upload className="w-5 h-5 text-slate-500 group-hover:text-emerald-500 transition" />
                 <span className="text-[10.5px] font-medium text-slate-300">Choisir un fichier d'arpentage</span>
-                <span className="text-[8px] text-slate-500 font-mono">Glisser KML, GPX, DXF, CSV, EXCEL, SHP ou GeoJSON</span>
+                <span className="text-[8px] text-slate-500 font-mono">Glisser DXF, CSV, EXCEL, GPKG ou GeoJSON</span>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".geojson,.json,.kml,.gpx,.csv,.xls,.xlsx,.dxf,.zip,.shp,.dbf"
+                  accept=".geojson,.json,.csv,.xls,.xlsx,.dxf,.gpkg,.zip,.shp,.dbf"
                   multiple
                   onChange={handleFileUpload}
                   className="hidden"

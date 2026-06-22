@@ -351,6 +351,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [showIframeModal, setShowIframeModal] = useState(false);
+  const [showAerialArrow, setShowAerialArrow] = useState(true);
 
   // High-fidelity page fitting & snapshot control states
   const [isSnapshotting, setIsSnapshotting] = useState(false);
@@ -983,6 +984,17 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
             </select>
           </div>
 
+          {/* Toggle for aerial arrow projection */}
+          <label className="flex items-center gap-2 bg-stone-50 border border-stone-200 px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 print:hidden cursor-pointer select-none shrink-0 transition hover:bg-stone-100">
+            <input
+              type="checkbox"
+              checked={showAerialArrow}
+              onChange={(e) => setShowAerialArrow(e.target.checked)}
+              className="w-3.5 h-3.5 rounded text-red-650 focus:ring-red-500 border-stone-300 accent-red-600 cursor-pointer"
+            />
+            <span className="text-[11px] text-stone-700 font-bold">Flèche Projet (Vue Aérienne)</span>
+          </label>
+
           <button
             onClick={onBackToEditor}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-stone-600 bg-stone-100 ring-1 ring-stone-200 hover:bg-stone-200 rounded-lg transition"
@@ -1210,29 +1222,29 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                 {/* Separator Line */}
                 <hr className="border-t-2 border-stone-800 my-1" />
 
-                {/* Structured Metadata & Certification Box */}
-                <div className="bg-stone-50 border-2 border-stone-800 rounded-lg p-2.5 grid grid-cols-4 items-center text-center text-[9px] font-mono select-none divide-x-2 divide-stone-300 shadow-sm leading-normal">
+                {/* Structured Metadata & Certification Box with enlarged typography for improved readability */}
+                <div className="bg-stone-50 border-2 border-stone-800 rounded-lg p-3 grid grid-cols-4 items-center text-center font-mono select-none divide-x-2 divide-stone-300 shadow-sm leading-normal">
                   <div className="flex flex-col items-center justify-center px-1">
-                    <span className="text-[7.2px] text-stone-500 uppercase font-bold block mb-0.5 tracking-tight">SYSTÈME DE COORDONNÉES</span>
-                    <span className="font-extrabold text-indigo-700 text-[10px] tracking-tighter leading-tight block">
+                    <span className="text-[9.5px] text-stone-500 uppercase font-black block mb-1 tracking-tight">SYSTÈME DE COORDONNÉES</span>
+                    <span className="font-extrabold text-indigo-700 text-[12.5px] tracking-tighter leading-tight block">
                       Merchich / {settings.projectionSystem}
                     </span>
                   </div>
                   <div className="flex flex-col items-center justify-center px-1">
-                    <span className="text-[7.2px] text-stone-500 uppercase font-bold block mb-0.5">Dossier N°</span>
-                    <span className="font-black text-rose-600 text-[11px] block truncate leading-tight">
+                    <span className="text-[9.5px] text-stone-500 uppercase font-black block mb-1">Dossier N°</span>
+                    <span className="font-black text-rose-600 text-[13.5px] block truncate leading-tight">
                       {settings.dossierNumber || "2026/..."}
                     </span>
                   </div>
                   <div className="flex flex-col items-center justify-center px-1">
-                    <span className="text-[7.2px] text-stone-500 uppercase font-bold block mb-0.5">Nombre de sommets</span>
-                    <span className="font-black text-stone-900 text-[11px] block leading-tight">
+                    <span className="text-[9.5px] text-stone-500 uppercase font-black block mb-1">Nombre de sommets</span>
+                    <span className="font-black text-stone-900 text-[13.5px] block leading-tight">
                       {parcel.vertices.length}
                     </span>
                   </div>
                   <div className="flex flex-col items-center justify-center px-1">
-                    <span className="text-[7.2px] text-stone-500 uppercase font-bold block mb-0.5">Echelle</span>
-                    <span className="font-extrabold text-stone-900 text-[11px] block leading-tight">
+                    <span className="text-[9.5px] text-stone-500 uppercase font-black block mb-1">Echelle</span>
+                    <span className="font-black text-stone-900 text-[13.5px] block leading-tight">
                       1 / {finalNumericalScale}
                     </span>
                   </div>
@@ -1242,8 +1254,8 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
               {/* Thicker visual separation line between information hub and coordinates table */}
               <hr className="border-t-[3px] border-double border-stone-800 my-2" />
 
-              {/* LOWER HALF: Aerial Imagery Excerpt Map */}
-              <div className="flex flex-col h-[126mm] max-h-[126mm] min-h-[126mm] mt-2 justify-start select-none">
+              {/* LOWER HALF: Aerial Imagery Excerpt Map with high-contrast red indicator arrow */}
+              <div className="flex flex-col h-[126mm] max-h-[126mm] min-h-[126mm] mt-2 justify-start select-none relative">
                 <span className="text-[12px] font-black text-stone-800 uppercase tracking-widest mb-2 block font-sans text-center">
                   <span className="text-red-600 font-extrabold pr-1">PROJET</span> (Vue Aérienne)
                 </span>
@@ -1251,6 +1263,38 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                   {/* Leaflet minimap container */}
                   <div id="page1-aerial-minimap" className="w-full h-full" />
                 </div>
+
+                {/* Highly stylized professional red arrow linking 'PROJET' to the center parcel */}
+                {showAerialArrow && (
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none z-[1000]" style={{ zIndex: 1000 }} viewBox="0 0 200 150" preserveAspectRatio="none">
+                    <defs>
+                      <marker
+                        id="red-arrow-head-aerial"
+                        viewBox="0 0 10 10"
+                        refX="6"
+                        refY="5"
+                        markerWidth="5"
+                        markerHeight="5"
+                        orient="auto-start-reverse"
+                      >
+                        <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#dc2626" />
+                      </marker>
+                    </defs>
+                    
+                    {/* Thinner, elegant curved path pointing towards the center but stopping short to avoid covering the parcel */}
+                    <path
+                      d="M 76 11 Q 35 32 80 58"
+                      fill="none"
+                      stroke="#dc2626"
+                      strokeWidth="1.0"
+                      strokeDasharray="3,2"
+                      markerEnd="url(#red-arrow-head-aerial)"
+                    />
+                    
+                    {/* Tiny start anchor point (red dot) at y=11 (safely under the text characters) */}
+                    <circle cx="76" cy="11" r="1.5" fill="#dc2626" />
+                  </svg>
+                )}
               </div>
             </div>
 

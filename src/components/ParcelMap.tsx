@@ -10,7 +10,7 @@ import {
   getOutsidePoint,
   calculateCentroid,
 } from "../utils/gisUtils";
-import { SupportedCRS } from "../utils/projectionManager";
+import { SupportedCRS, CRS_DETAILS } from "../utils/projectionManager";
 import {
   Layers,
   Globe,
@@ -63,6 +63,29 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     return "cad";
   })());
   const [isDeleteMode, setDeleteMode] = useState<boolean>(false);
+  const [mouseCoords, setMouseCoords] = useState<{
+    lat: number;
+    lng: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [lang, setLang] = useState<"ar" | "fr">("ar");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("cadastral_language");
+    if (saved === "ar" || saved === "fr") {
+      setLang(saved);
+    }
+    
+    // Periodically poll/sync language changes if the user switches in real-time
+    const interval = setInterval(() => {
+      const current = localStorage.getItem("cadastral_language");
+      if (current && (current === "ar" || current === "fr")) {
+        setLang(prev => prev !== current ? (current as any) : prev);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const layersRef = useRef<{
     tileLayer: L.TileLayer | null;
@@ -635,8 +658,40 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     }
   }, [parcel, settings, selectedVertexId, selectedSegmentId, mapPreset, activeCRS, isDeleteMode]);
 
+  // Active mouse coordinates tracker over Leaflet footprint
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const handleMouseMoveCoords = (e: L.LeafletMouseEvent) => {
+      const { lat, lng } = e.latlng;
+      const plane = latLngToPlane(lat, lng, activeCRS);
+      setMouseCoords({
+        lat,
+        lng,
+        x: plane.x,
+        y: plane.y,
+      });
+    };
+
+    const handleMouseOutCoords = () => {
+      setMouseCoords(null);
+    };
+
+    map.on("mousemove", handleMouseMoveCoords);
+    map.on("mouseout", handleMouseOutCoords);
+
+    return () => {
+      map.off("mousemove", handleMouseMoveCoords);
+      map.off("mouseout", handleMouseOutCoords);
+    };
+  }, [activeCRS, mapPreset]);
+
+  const crsDetails = CRS_DETAILS[activeCRS] || { name: activeCRS, arabic: activeCRS };
+  const crsLabel = lang === "ar" ? crsDetails.arabic : crsDetails.name;
+
   return (
-    <div className="relative w-full h-full bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-inner group">
+    <div className="relative w-full h-full bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-inner group flex flex-col">
       <style>{`
         .leaflet-container {
           background: ${mapPreset === "cad" ? "#ffffff" : "#0d1117"} !important;
@@ -657,7 +712,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
       `}</style>
 
       {/* Map Element */}
-      <div ref={mapContainerRef} className="w-full h-full z-10" />
+      <div ref={mapContainerRef} className="w-full flex-1 min-h-0 z-10" />
 
       {/* Unified Professional Dark UI CAD/GIS Control Dashboard (Floating Top-Left) */}
       <div className="absolute top-4 left-4 z-20 flex flex-col gap-3 max-w-[145px] pointer-events-none">
@@ -821,7 +876,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
       )}
 
       {/* Bottom-Right indicator showing the currently active view preset details */}
-      <div className="absolute bottom-4 right-4 z-20 pointer-events-none bg-slate-900/85 border border-slate-700/50 backdrop-blur-md px-3 py-1.5 rounded-lg text-[9px] text-slate-300 font-bold select-none uppercase tracking-widest font-mono flex items-center gap-2">
+      <div className="absolute bottom-16 right-4 z-20 pointer-events-none bg-slate-900/85 border border-slate-700/50 backdrop-blur-md px-3 py-1.5 rounded-lg text-[9px] text-slate-300 font-bold select-none uppercase tracking-widest font-mono flex items-center gap-2">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
         <span>
           {mapPreset === "cad"
@@ -832,6 +887,62 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                 ? "Google Hybrid actif"
                 : "Plan OSM actif"}
         </span>
+      </div>
+
+      {/* High-Precision Mouse Coordinates Display Frame/Footer */}
+      <div className="bg-slate-950 border-t border-slate-800 text-slate-300 px-4 py-2 flex flex-col md:flex-row items-center justify-between gap-3 select-none z-20 shrink-0 font-sans shadow-lg">
+        {/* Left Side: Mouse location pointer & Coordinates */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]">
+          <div className="flex items-center gap-1.5 text-slate-400">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="font-bold text-slate-300">
+              {lang === "ar" ? "إحداثيات مؤشر الماوس الحية:" : "Coordonnées de la souris :"}
+            </span>
+          </div>
+
+          {mouseCoords ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono">
+              <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded px-2.5 py-1 shadow-sm">
+                <span className="text-emerald-400 font-bold text-[10px]">X (Lambert):</span>
+                <span className="text-slate-100 font-black tracking-wider">{mouseCoords.x.toLocaleString("fr-FR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
+                <span className="text-[10px] text-slate-500">m</span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded px-2.5 py-1 shadow-sm">
+                <span className="text-emerald-400 font-bold text-[10px]">Y (Lambert):</span>
+                <span className="text-slate-100 font-black tracking-wider">{mouseCoords.y.toLocaleString("fr-FR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
+                <span className="text-[10px] text-slate-500">m</span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded px-2.5 py-1 shadow-sm text-indigo-300">
+                <span className="text-indigo-400 font-bold text-[10px]">Lat:</span>
+                <span className="font-semibold">{mouseCoords.lat.toFixed(7)}°</span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded px-2.5 py-1 shadow-sm text-indigo-300">
+                <span className="text-indigo-400 font-bold text-[10px]">Lng:</span>
+                <span className="font-semibold">{mouseCoords.lng.toFixed(7)}°</span>
+              </div>
+            </div>
+          ) : (
+            <div className="text-slate-400 font-sans italic text-[11px] select-none py-1 flex items-center gap-2">
+              <MousePointer className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0" />
+              <span>
+                {lang === "ar" 
+                  ? "حرّك مؤشر الفأرة (الماوس) فوق الخريطة لعرض الإحداثيات الحية ولومبرت" 
+                  : "Survolez l'image aérienne avec la souris pour afficher les coordonnées"}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Right Side: Active Projection reference */}
+        <div className="flex items-center gap-2 text-[10.5px] text-slate-400 font-mono self-end md:self-auto bg-slate-900 border border-slate-800 px-3 py-1 rounded shadow-inner select-none transition-all hover:border-slate-700">
+          <Globe className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-spin-slow" style={{ animationDuration: "10s" }} />
+          <span className="font-bold text-slate-300">
+            {lang === "ar" ? "نظام الإسقاط:" : "Projection :"}
+          </span>
+          <span className="text-amber-300 font-semibold truncate max-w-[200px]" title={crsLabel}>
+            {activeCRS} - {crsLabel}
+          </span>
+        </div>
       </div>
     </div>
   );
