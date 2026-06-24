@@ -905,12 +905,12 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
           </div>
           <div>
             <h1 className="text-sm font-bold text-slate-800">
-              {printLayoutType === "type1" ? "Visualisation du Dossier d'Impression (طباعة 1)" : "Visualisation du Plan Parcellaire (طباعة 2)"}
+              {printLayoutType === "type1" ? "Visualisation du Dossier d'Impression (الطباعة مرفوقة بصفحة الغلاف)" : "Visualisation du Plan Parcellaire (الطباعة بدون صفحة الغلاف)"}
             </h1>
             <p className="text-[11px] text-slate-500">
               {printLayoutType === "type1" 
-                ? "Page 1 de garde (A4 Vertical/Portrait) et Page 2 plan de détails (variable)"
-                : "Page unique du plan parcellaire (horizontal avec titre PLAN PARCELLAIRE)"}
+                ? "Dossier d'impression complet (Page 1: page de garde + Page 2: plan de détails)"
+                : "Plan parcellaire seul (Page unique du plan horizontal sans page de garde)"}
             </p>
           </div>
         </div>
@@ -926,7 +926,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
               }`}
               title="Page de Garde + Page de Détails"
             >
-              الملف التقني (طباعة 1)
+              الطباعة مرفوقة بصفحة الغلاف
             </button>
             <button
               onClick={() => setPrintLayoutType("type2")}
@@ -937,7 +937,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
               }`}
               title="Plan Parcellaire Seul"
             >
-              الملف التقني (طباعة 2)
+              الطباعة بدون صفحة الغلاف
             </button>
           </div>
 
@@ -1183,35 +1183,14 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
 
                   {/* Centered Logo */}
                   <div className="col-span-4 flex flex-col items-center justify-center">
-                    <div className="w-20 h-20 bg-white border-2 border-stone-800 p-2 rounded-full flex items-center justify-center shadow-md">
-                      {settings.logoUrl ? (
-                        <img
-                          src={settings.logoUrl}
-                          alt="Logo"
-                          className="max-h-full max-w-full object-contain"
-                          crossOrigin="anonymous"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <svg
-                          viewBox="0 0 100 100"
-                          className="w-12 h-12 text-stone-800"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <polygon
-                            points="50,12 85,32 85,72 50,92 15,72 15,32"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="6"
-                          />
-                          <polygon
-                            points="50,22 75,37 75,67 50,82 25,67 25,37"
-                            fill="currentColor"
-                            opacity="0.25"
-                          />
-                          <line x1="50" y1="12" x2="50" y2="92" stroke="currentColor" strokeWidth="4" />
-                        </svg>
-                      )}
+                    <div className="w-20 h-20 flex items-center justify-center">
+                      <img
+                        src={settings.logoUrl || "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Coat_of_arms_of_Morocco.svg/240px-Coat_of_arms_of_Morocco.svg.png"}
+                        alt="Logo"
+                        className="max-h-full max-w-full object-contain"
+                        crossOrigin="anonymous"
+                        referrerPolicy="no-referrer"
+                      />
                     </div>
                   </div>
 
@@ -1441,7 +1420,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                   fontSize: "6.5px",
                 }}
               >
-                Généré automatiquement par PARCEL LAYOUT DESIGNER v1.0
+                Généré automatiquement par PARCEL LAYOUT DESIGNER v1.1
               </div>
 
               <svg
@@ -1622,7 +1601,8 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
 
                 {/* Labels of segments */}
                 {parcel.segments.map((seg) => {
-                  const insidePrPoint = getOutsidePoint(centroid, seg.startVertex, seg.endVertex, 7);
+                  const labelOffset = settings.labelOffset !== undefined ? settings.labelOffset : 7;
+                  const insidePrPoint = getOutsidePoint(centroid, seg.startVertex, seg.endVertex, labelOffset);
                   const pt = projectToSvg(insidePrPoint.x, insidePrPoint.y);
 
                   if (pt.x < mapLeft + 10 || pt.x > mapRight - 10 || pt.y < mapTop + 10 || pt.y > mapBottom - 10) {
@@ -1659,7 +1639,9 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                   };
 
                   const neighborLines = showN && seg.neighbor ? splitNeighborText(seg.neighbor) : [];
-                  const neighborFontSize = "6.5px"; // Unified legible size for constant text hierarchy
+                  const baseLabelSize = settings.labelFontSize !== undefined ? settings.labelFontSize : 7.0;
+                  const neighborFontSize = `${baseLabelSize * 0.9}px`;
+                  const lengthFontSize = `${baseLabelSize}px`;
 
                   return (
                     <g key={seg.id}>
@@ -1674,7 +1656,8 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                               stroke="#ffffff"
                               strokeWidth="3"
                               strokeLinejoin="round"
-                              className="text-[7.5px] font-sans font-black select-none"
+                              style={{ fontSize: lengthFontSize }}
+                              className="font-sans font-black select-none"
                             >
                               {seg.length.toFixed(2)} m
                             </text>
@@ -1682,7 +1665,8 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                               x="0"
                               y="-4"
                               textAnchor="middle"
-                              className="text-[7.5px] font-sans font-black fill-blue-800 select-none"
+                              style={{ fontSize: lengthFontSize }}
+                              className="font-sans font-black fill-blue-800 select-none"
                             >
                               {seg.length.toFixed(2)} m
                             </text>
@@ -1727,7 +1711,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                                   stroke="#ffffff"
                                   strokeWidth="3.2"
                                   strokeLinejoin="round"
-                                  style={{ fontSize: "6.0px", lineHeight: "1" }}
+                                  style={{ fontSize: `${baseLabelSize * 0.8}px`, lineHeight: "1" }}
                                   className="font-sans font-bold select-none"
                                 >
                                   {neighborLines[0]}
@@ -1736,7 +1720,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                                   x="0"
                                   y="4.5"
                                   textAnchor="middle"
-                                  style={{ fontSize: "6.0px", lineHeight: "1" }}
+                                  style={{ fontSize: `${baseLabelSize * 0.8}px`, lineHeight: "1" }}
                                   className="font-sans font-black fill-stone-850 select-none"
                                 >
                                   {neighborLines[0]}
@@ -1750,7 +1734,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                                   stroke="#ffffff"
                                   strokeWidth="3.2"
                                   strokeLinejoin="round"
-                                  style={{ fontSize: "6.0px", lineHeight: "1" }}
+                                  style={{ fontSize: `${baseLabelSize * 0.8}px`, lineHeight: "1" }}
                                   className="font-sans font-bold select-none"
                                 >
                                   {neighborLines[1]}
@@ -1759,7 +1743,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                                   x="0"
                                   y="11"
                                   textAnchor="middle"
-                                  style={{ fontSize: "6.0px", lineHeight: "1" }}
+                                  style={{ fontSize: `${baseLabelSize * 0.8}px`, lineHeight: "1" }}
                                   className="font-sans font-black fill-stone-850 select-none"
                                 >
                                   {neighborLines[1]}
@@ -1802,7 +1786,8 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                           stroke="#ffffff"
                           strokeWidth="3.5"
                           strokeLinejoin="round"
-                          className="text-[8.5px] font-sans font-extrabold select-none"
+                          style={{ fontSize: `${settings.vertexFontSize || 8.5}px` }}
+                          className="font-sans font-extrabold select-none"
                         >
                           {v.label}
                         </text>
@@ -1811,7 +1796,8 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                           x={labelX}
                           y={labelY + 2.5}
                           textAnchor="middle"
-                          className="text-[8.5px] font-sans font-extrabold fill-stone-900 select-none"
+                          style={{ fontSize: `${settings.vertexFontSize || 8.5}px` }}
+                          className="font-sans font-extrabold fill-stone-900 select-none"
                         >
                           {v.label}
                         </text>

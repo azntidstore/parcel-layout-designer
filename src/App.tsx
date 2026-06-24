@@ -130,6 +130,11 @@ export default function App() {
       scaleMode: "auto",
       customScale: 500,
       dossierNumber: "2026/...",
+      vertexPrefixType: "P",
+      customPrefix: "",
+      vertexFontSize: 8.5,
+      labelFontSize: 7.0,
+      labelOffset: 7.0,
     };
     try {
       const saved = localStorage.getItem("cadastral_settings");
@@ -138,6 +143,21 @@ export default function App() {
         if (!parsed.dossierNumber) {
           parsed.dossierNumber = "2026/...";
         }
+        if (!parsed.vertexPrefixType) {
+          parsed.vertexPrefixType = "P";
+        }
+        if (parsed.customPrefix === undefined) {
+          parsed.customPrefix = "";
+        }
+        if (parsed.vertexFontSize === undefined) {
+          parsed.vertexFontSize = 8.5;
+        }
+        if (parsed.labelFontSize === undefined) {
+          parsed.labelFontSize = 7.0;
+        }
+        if (parsed.labelOffset === undefined) {
+          parsed.labelOffset = 7.0;
+        }
         return parsed;
       }
       return defaultSettings;
@@ -145,6 +165,39 @@ export default function App() {
       return defaultSettings;
     }
   });
+
+  const getFormattedLabel = (idx: number, type = settings.vertexPrefixType, custom = settings.customPrefix) => {
+    const pType = type || "P";
+    if (pType === "None") return `${idx + 1}`;
+    if (pType === "B") return `B${idx + 1}`;
+    if (pType === "Custom") return `${(custom || "").trim()}${idx + 1}`;
+    return `P${idx + 1}`;
+  };
+
+  const updateVertexLabels = (
+    prefixType: "P" | "B" | "Custom" | "None",
+    customPrefixStr: string
+  ) => {
+    setParcels((prevParcels) =>
+      prevParcels.map((p) => {
+        const updatedVertices = p.vertices.map((v, idx) => ({
+          ...v,
+          label: getFormattedLabel(idx, prefixType, customPrefixStr),
+        }));
+
+        const existingNeighbors: Record<number, string> = {};
+        p.segments.forEach((s) => {
+          existingNeighbors[s.id] = s.neighbor;
+        });
+
+        return {
+          ...p,
+          vertices: updatedVertices,
+          segments: buildSegmentsAndStats(updatedVertices, existingNeighbors),
+        };
+      })
+    );
+  };
 
   // Persist State to LocalStorage for cross-tab multi-view synching
   React.useEffect(() => {
@@ -245,7 +298,7 @@ export default function App() {
           const transformed = transformCRS({ x: v.x, y: v.y }, rawSystem, newSourceCRS);
           return {
             id: vIdx + 1,
-            label: `P${vIdx + 1}`,
+            label: getFormattedLabel(vIdx),
             x: parseFloat(transformed.x.toFixed(2)),
             y: parseFloat(transformed.y.toFixed(2)),
           };
@@ -381,7 +434,7 @@ export default function App() {
         const nextId = p.vertices.length > 0 ? Math.max(...p.vertices.map((v) => v.id)) + 1 : 1;
         const newVert: Vertex = {
           id: nextId,
-          label: `P${nextId}`,
+          label: getFormattedLabel(p.vertices.length),
           x: parseFloat(x.toFixed(2)),
           y: parseFloat(y.toFixed(2)),
         };
@@ -397,7 +450,7 @@ export default function App() {
         const reindexedVertices = updatedVertices.map((v, idx) => ({
           ...v,
           id: idx + 1,
-          label: `P${idx + 1}`,
+          label: getFormattedLabel(idx),
         }));
 
         const existingNeighbors: Record<number, string> = {};
@@ -432,7 +485,7 @@ export default function App() {
           .filter((v) => v.id !== vertexId)
           .map((v, idx) => ({
             ...v,
-            label: `P${idx + 1}`,
+            label: getFormattedLabel(idx),
             id: idx + 1,
           }));
 
@@ -537,7 +590,7 @@ export default function App() {
           const transformed = transformCRS({ x: v.x, y: v.y }, rawSystem, finalSourceCRS);
           return {
             id: vIdx + 1,
-            label: `P${vIdx + 1}`,
+            label: getFormattedLabel(vIdx),
             x: parseFloat(transformed.x.toFixed(2)),
             y: parseFloat(transformed.y.toFixed(2)),
           };
@@ -1208,11 +1261,138 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Point Label Prefix Configuration */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1 font-mono">
+                      {lang === "ar" ? "تسمية نقط الحدود" : "Préfixe des Sommets"}
+                    </label>
+                    <select
+                      value={settings.vertexPrefixType || "P"}
+                      onChange={(e) => {
+                        const newType = e.target.value as "P" | "B" | "Custom" | "None";
+                        setSettings((prev) => ({ ...prev, vertexPrefixType: newType }));
+                        updateVertexLabels(newType, settings.customPrefix || "");
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 focus:outline-none text-[10.5px]"
+                    >
+                      <option value="P">{lang === "ar" ? "الحرف P (افتراضي)" : "P (Par défaut)"}</option>
+                      <option value="B">{lang === "ar" ? "الحرف B (بورن)" : "B (Borne)"}</option>
+                      <option value="None">{lang === "ar" ? "بدون حرف (أرقام فقط)" : "Sans lettre (Chiffres seuls)"}</option>
+                      <option value="Custom">{lang === "ar" ? "بادئة مخصصة..." : "Personnalisé..."}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1 font-mono">
+                      {lang === "ar" ? "بادئة مخصصة" : "Préfixe Perso."}
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={10}
+                      disabled={settings.vertexPrefixType !== "Custom"}
+                      value={settings.customPrefix || ""}
+                      onChange={(e) => {
+                        const newVal = e.target.value;
+                        setSettings((prev) => ({ ...prev, customPrefix: newVal }));
+                        updateVertexLabels(settings.vertexPrefixType || "Custom", newVal);
+                      }}
+                      placeholder="Ex: T"
+                      className="w-full bg-slate-900 border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 focus:outline-none text-[10.5px]"
+                    />
+                  </div>
+                </div>
+
+                {/* Visual Label & Font Customization Controls */}
+                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-700/60 space-y-2.5">
+                  <span className="text-[9.5px] font-bold text-emerald-400 uppercase tracking-wider block border-b border-slate-800 pb-1">
+                    {lang === "ar" ? "تخصيص أبعاد وحجم الكتابة" : "Taille & Position des Textes"}
+                  </span>
+                  
+                  {/* Vertex Font Size */}
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-[10px] text-slate-400 uppercase font-mono">
+                        {lang === "ar" ? "حجم خط النقط (القمم)" : "Police des Sommets"}
+                      </label>
+                      <span className="text-[10px] text-amber-400 font-mono font-bold">
+                        {settings.vertexFontSize || 8.5}px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={4}
+                      max={18}
+                      step={0.5}
+                      value={settings.vertexFontSize !== undefined ? settings.vertexFontSize : 8.5}
+                      onChange={(e) => {
+                        setSettings((prev) => ({ ...prev, vertexFontSize: parseFloat(e.target.value) }));
+                      }}
+                      className="w-full accent-emerald-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Label Font Size */}
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-[10px] text-slate-400 uppercase font-mono">
+                        {lang === "ar" ? "حجم خط التسميات والتعليقات" : "Police des Étiquettes"}
+                      </label>
+                      <span className="text-[10px] text-amber-400 font-mono font-bold">
+                        {settings.labelFontSize || 7.0}px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={4}
+                      max={18}
+                      step={0.5}
+                      value={settings.labelFontSize !== undefined ? settings.labelFontSize : 7.0}
+                      onChange={(e) => {
+                        setSettings((prev) => ({ ...prev, labelFontSize: parseFloat(e.target.value) }));
+                      }}
+                      className="w-full accent-emerald-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Label Offset */}
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-[10px] text-slate-400 uppercase font-mono">
+                        {lang === "ar" ? "المسافة بين التسميات والضلع" : "Distance aux Limites"}
+                      </label>
+                      <span className="text-[10px] text-amber-400 font-mono font-bold">
+                        {settings.labelOffset !== undefined ? settings.labelOffset : 7.0}m
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={30}
+                      step={0.5}
+                      value={settings.labelOffset !== undefined ? settings.labelOffset : 7.0}
+                      onChange={(e) => {
+                        setSettings((prev) => ({ ...prev, labelOffset: parseFloat(e.target.value) }));
+                      }}
+                      className="w-full accent-emerald-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
+                    />
+                  </div>
+                </div>
+
                 {/* Custom Logo Upload */}
                 <div>
-                  <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1 font-mono">
-                    {lang === "ar" ? "تخصيص شعار الإدارة" : "Logo d'En-tête Personnalisé"}
-                  </label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[10px] text-slate-400 uppercase tracking-wider block font-mono">
+                      {lang === "ar" ? "تخصيص شعار الإدارة" : "Logo d'En-tête Personnalisé"}
+                    </label>
+                    {settings.logoUrl && (
+                      <button
+                        onClick={() => setSettings((prev) => ({ ...prev, logoUrl: "" }))}
+                        className="text-[9px] text-amber-500 hover:text-amber-400 underline cursor-pointer"
+                      >
+                        {lang === "ar" ? "إعادة للشعار الافتراضي" : "Réinitialiser"}
+                      </button>
+                    )}
+                  </div>
                   <input
                     type="file"
                     accept="image/*"

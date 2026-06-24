@@ -44,7 +44,7 @@ export const translations: Record<"ar" | "fr", TranslationSet> = {
   ar: {
     appTitle: "مخطط تصميم القطع الأرضية",
     appSubtitle: "Éditeur de levé Topographique",
-    version: "مطور 1.0",
+    version: "مطور 1.1",
     newPlanBtn: "مخطط جديد",
     editMapBtn: "محرر الخريطة",
     printBtn: "الملف التقني (طباعة)",
@@ -85,7 +85,7 @@ export const translations: Record<"ar" | "fr", TranslationSet> = {
   fr: {
     appTitle: "PARCEL LAYOUT DESIGNER",
     appSubtitle: "Éditeur de levé Topographique",
-    version: "V1.0 PRO",
+    version: "V1.1 PRO",
     newPlanBtn: "Nouveau Plan",
     editMapBtn: "Éditeur de Carte",
     printBtn: "Fiche Technique (Impression)",

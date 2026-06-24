@@ -19,7 +19,10 @@ import {
   Check,
   ChevronRight,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  RefreshCw,
+  PlusCircle,
+  FileSpreadsheet
 } from "lucide-react";
 
 interface UserGuideProps {
@@ -36,348 +39,348 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
   const sectionsAr = [
     {
       id: "intro",
-      title: "1. مقدمة عن التطبيق",
+      title: "1. مقدمة شاملة وبنية التطبيق",
       icon: <Info className="w-5 h-5 text-indigo-400" />,
-      content: "تطبيق Parcel Layout Designer هو منصة سحابية احترافية صممت خصيصاً للمهندسين المساحين الطبوغرافيين (IGT) في المغرب لتوليد وتصميم مخططات التحديد والعمليات الطبوغرافية والملفات التقنية المخصصة لمصالح المحافظة العقارية والمسح العقاري والخرائطية (ANCFCC). يدمج التطبيق بين دقة الحسابات الرياضية الجيوديزية والسرعة الفائقة في عرض الخرائط التفاعلية وإدراج الصور الجوية."
+      content: "تطبيق Parcel Layout Designer هو منصة متكاملة مخصصة لمهندسي المساحة والطبوعربيا (IGT) لتصميم الملفات التقنية ومخططات التحديد المعتمدة لدى مصالح الوكالة الوطنية للمحافظة العقارية والمسح العقاري والخرائطية (ANCFCC). يدمج التطبيق بين لوحة تحكم تفاعلية للتعديل الهندسي المباشر، ومحاكي الخرائط الجغرافية النشط، واستوديو التوليد التلقائي لملفات الطباعة بجودة A4."
     },
     {
-      id: "import",
-      title: "2. استيراد الملفات وبيانات الرفع",
-      icon: <Layers className="w-5 h-5 text-emerald-400" />,
-      content: `يدعم التطبيق استيراد الرفع الطبوغرافي للقطعة الأرضية بمجموعة واسعة من الصيغ:
-• ملفات أوتوكاد DXF (نقاط أو مضلعات مغلقة).
-• ملفات الأقراص الجيومكانية GeoPackage (.gpkg) و GeoJSON.
-• جداول البيانات بصيغ Excel (.xlsx / .xls) و CSV.
-• ملفات الحدود الشائعة KML / KMZ.
-
-طريقة الاستيراد:
-1. انقر على زر "Choisir un fichier d'arpentage" في اللوحة الجانبية لرفع الملف.
-2. سيتعرف التطبيق تلقائياً على نظام الإحداثيات والمضلع الأساسي ويرسمه على الخريطة التفاعلية.
-3. يفرغ التطبيق جدول نقاط الحدود تلقائياً مع تسلسلها (P1, P2, P3...) وحساب المسافات الفاصلة وزوايا التوجيه.`
+      id: "live_preview",
+      title: "2. أداة المعاينة الحية وتحريك نقاط الحدود",
+      icon: <Eye className="w-5 h-5 text-emerald-400" />,
+      content: `يوفر التطبيق خريطة تفاعلية متطورة للمعاينة الحية تتيح لك:
+• رؤية القطعة الأرضية في موقعها الجغرافي الحقيقي متراكبة مع الصور الجوية عالية الدقة (Orthophotoplan).
+• سحب وإزاحة نقاط الحدود (Drag-and-Drop Vertices) مباشرة باستخدام الفأرة على الخريطة لتصحيح موقع أي رأس من الرؤوس.
+• تحديث جدول الإحداثيات (X, Y) والمساحة والمحيط بشكل فوري وتزامني في نفس لحظة تحريك النقطة.
+• التبديل بين طبقات الخريطة المختلفة من صندوق الاختيار السفلي (صورة فضائية هجينة، خريطة طرقية كلاسيكية، أو طبقة بيضاء لبيان التخطيط الهندسي الصرف).`
     },
     {
-      id: "crs",
-      title: "3. ضبط نظام الإحداثيات والمقاييس الجيوديزية",
-      icon: <MapPin className="w-5 h-5 text-amber-500" />,
-      content: `يتوافق التطبيق بشكل كامل مع البنية الجيوديزية الوطنية للمملكة المغربية:
-• نظام مرشيش (Merchich) مع تقسيمات الإسقاط المخروطي المطابق "لامبرت المغرب" (Lambert Zone I, Zone II, Zone III, Zone IV).
-• إمكانية تفعيل الإسقاط المباشر وتحديد "Merchich / EPSG:26191" وما يواليها حسب الإقليم الجغرافي للمشروع.
-• حساب المساحة المغطاة في مستويين: المساحة المستوية الحسابية (Surface Projetée) والمساحة الحقيقية على الإلبيسويد الجيوديزي بدقة متناهية.`
+      id: "modify_drawing",
+      title: "3. كيفية تعديل الرسم وإضافة نقاط جديدة",
+      icon: <PlusCircle className="w-5 h-5 text-amber-400" />,
+      content: `يمكنك التحكم التام بالرسم مضلع الحدود وتغيير تصميمه عبر طريقتين:
+• التعديل العددي المباشر: من خلال "جدول إحداثيات النقط (القمم)" باللوحة الجانبية، يمكنك النقر على خانة إحداثي X (Est) أو Y (Nord) أو Z (Altitude) وإدخال القيمة العددية يدوياً بالدقة المطلوبة لتعديل موضع النقطة فوراً.
+• إضافة نقطة جديدة للمضلع:
+  1. انتقل إلى نموذج "إضافة نقطة جديدة للمضلع" أسفل جدول الإحداثيات.
+  2. أدخل الإحداثي الشرقي (X) والإحداثي الشمالي (Y) والارتفاع (Z).
+  3. انقر على زر "إضافة نقطة" ليتم إدراج الرأس الجديد في نهاية المضلع وحساب المساحة الجديدة فوراً.
+• حذف النقاط: يمكنك إزالة أي نقطة بالضغط على زر الحذف الأحمر بجانب النقطة في الجدول لإعادة تشكيل المضلع.`
     },
     {
-      id: "edit",
-      title: "4. التعديل الديناميكي والمجاورين",
+      id: "import_data",
+      title: "4. استيراد الرفع الطبوغرافي الرقمي",
+      icon: <UploadCloud className="w-5 h-5 text-sky-400" />,
+      content: `يدعم التطبيق استيراد الرفع الطبوغرافي الخارجي بطريقة مرنة وسهلة:
+• سحب وإسقاط أو تصفح الملفات بصيغ: DXF (أوتوكاد)، KML/KMZ (جوجل إيرث)، GPX، CSV، أو ملفات Excel (.xlsx).
+• تحديد نظام الإحداثيات المرجعي للملف المستورد (Source CRS) للتأكد من إسقاطه الرياضي الصحيح.
+• بعد رفع الملف، يتعرف التطبيق تلقائياً على المضلع المغلق، ويرسمه على الخريطة مع استيراد جدول النقاط بالكامل.
+• ميزة مطابقة الأسماء: يمكنك اختيار العمود المناسب من جدول البيانات المستورد ليكون هو مسمى نقاط الحدود الرسمية.`
+    },
+    {
+      id: "layout_setup",
+      title: "5. إعداد المخطط وملء البيانات الأساسية وتخصيص الكتابة",
       icon: <Settings className="w-5 h-5 text-blue-400" />,
-      content: `في لوحة التحكم في المحرر الرسومي:
-• يمكنك مراجعة وتعديل إحداثيات كل نقطة بالخطوط المباشرة (Est / Nord / Altitude).
-• إمكانية تحديد أسماء المجاورين (Riverains) لكل ضلع من مضلع القطعة (مثل: ملك خاص، طريق عام، ممر مائي، رقم الرسم العقاري المجاور) لضمان دمجها في المخطط النهائي.
-• التحكم الكامل في بيانات رأسية المخطط (رقم الملف التقني Dossier N°، اسم المالك Propriétaire، الإقليم أو العمالة Province، الجماعة الترابية Commune، والمدينة).`
+      content: `لتهيئة رأسية الملف الفني وتخصيص طريقة وأحجام كتابة نقاط الحدود، املأ الحقول في لوحة التحكم الجانبية:
+• البيانات الإدارية: رقم الملف التقني (Dossier N°)، اسم المالك (Propriétaire)، الإقليم/العمالة، الجماعة الترابية، والمدينة أو الدائرة.
+• تحديد مقياس الرسم (Echelle) : يمكنك ترك النظام يحسب السلم الأنسب تلقائياً لملء الصفحة، أو تحديد مقياس يدوي محدد ليتلائم مع قياسات الورقة.
+• تسمية المجاورين (Riverains): لكل ضلع ممتد بين نقطتين، قم بكتابة اسم المجاور الفعلي لتظهر التسميات بشكل موازٍ للأضلاع على المخطط الهندسي وفي جدول الحدود.
+• تخصيص بادئة نقاط الحدود (Prefix): يمكنك اختيار الحرف الأول لتسمية نقط الحدود: الحرف P (افتراضي)، الحرف B (بورن/Borne)، بدون حرف (أرقام فقط)، أو كتابة بادئة مخصصة من اختيارك (مثل T أو S). وسيتم تحيين كامل المخطط والجداول فوراً وفق الخيار المعتمد.
+• التحكم في حجم الخط والمسافات (Font & Offset): تمنحك اللوحة الجانبية إمكانية التحكم الدقيق عبر مؤشرات سحب تفاعلية في:
+  1. حجم خط كتابة النقط (القمم) على المخطط والخريطة.
+  2. حجم خط كتابة المسافات والتعليقات والحدود والمجاورين.
+  3. المسافة الفاصلة (Offset) بين كتابة المسافات/التعليقات والضلع المقابل لها لتفادي تداخل النصوص وتحقيق وضوح هندسي تام.
+• فواصل شبكة الإحداثيات: اضبط فاصل الشبكة بالمتر (مثلاً: 50م، 100م) للتحكم بكثافة خطوط الإحداثيات المتراكبة.`
     },
     {
-      id: "print",
-      title: "5. إرساء وتجهيز مستندات الطباعة الرسمية",
+      id: "print_choice",
+      title: "6. التبديل بين أنماط الطباعة وحفظ الملفات",
       icon: <Printer className="w-5 h-5 text-rose-500" />,
-      content: `ينتج التطبيق ملفاً تقنياً معتمداً ومطابقاً لمعايير المحافظة العقارية يتكون بدقة من صفحتين بحجم A4 في واجهة طباعة موحدة:
-• الصفحة الأولى (Document de Renseignements):
-  - تتضمن كافة المعلومات الإدارية والمكانية للقطعة في جدول علوي منظم.
-  - جدول إحداثيات الرؤوس الرسمي (Est, Nord, Alt) المعتمد.
-  - نافذة الصورة الجوية (Orthophotoplan) لدعم المعاينة الفضائية السريعة للحدود.
-  - إمكانية إظهار أو إخفاء "سهم المشروع الأحمر" (Flèche Projet) الموجه لمركز القطعة من خلال مربع الاختيار في الأعلى، لتمييز موقع العقار دون تغطية تفاصيل حدوده الأرضية.
+      content: `تم تجميع خيارات الطباعة وتطويرها في لوحة معاينة موحدة ومباشرة لتسهيل العمل:
+• نمط 'الطباعة مرفوقة بصفحة الغلاف' (طباعة 1 سابقاً):
+  - وثيقة رسمية متكاملة من صفحتين بحجم A4.
+  - الصفحة الأولى عبارة عن غلاف فني رسمي (Page de Garde) يحتوي على المعلومات الإدارية، جدول الإحداثيات الكامل مع الارتفاعات، ونافذة مدمجة للصورة الجوية (Orthophotoplan) لدعم المعاينة البصرية لموقع العقار مع إمكانية إظهار 'سهم المشروع الأحمر'.
+  - الصفحة الثانية مخصصة للمخطط الطبوغرافي الرسمي مع مقياس الرسم وسهم الشمال والرياح، وجدول المسافات والمجاورين المفصل.
 
-• الصفحة الثانية (Plan de Délimitation):
-  - تظهر مخطط الرسم الهندسي بمقاييس رسم معيارية (1/1000، 1/500، 1/2500 إلخ) مع مقياس تلقائي ذكي.
-  - شبكة الإحداثيات المتراكبة (Graticule) مع تبيين توجيه الشمال الطبوغرافي وسهم اتجاه الرياح.
-  - جدول مخصص يربط أضلاع المضلع بالبيانات والمسافات والمجاورين الفعليين.
+• نمط 'الطباعة بدون صفحة الغلاف' (طباعة 2 سابقاً):
+  - وثيقة هندسية مدمجة في صفحة واحدة أفقية (Landscape) مخصصة فقط للمخطط الطبوغرافي (Plan Parcellaire).
+  - تتميز بوجود عنوان بارز في الأعلى 'PLAN PARCELLAIRE'، مع إدراج شارة رسمية ومطورة في حاشية الخريطة توضح المساحة الكلية للعقار بالتفصيل والتقسيم المغربي التقليدي (هكتار . آر . سنتيار) مثل: SURFACE : 2 H . 14 A . 35 Ca.
 
-• دمج خيارات الطباعة (جديد):
-  - تم دمج خياري "طباعة 1" (الملف التقني المزدوج A4 + المخطط) و "طباعة 2" (مخطط فريد ذو عنوان وسفح مدمج) في شاشة واحدة. يمكنك الآن التنقل بينهما فوراً بضغطة زر لرؤية المعاينة قبل التصدير.`
-    },
-    {
-      id: "export",
-      title: "6. التصدير النهائي وحفظ الملفات",
-      icon: <FileText className="w-5 h-5 text-teal-400" />,
-      content: `كيفية حفظ المخطط وتصديره:
-1. بعد التحقق من مقاييس الرسم وصورة القمر الصناعي ومجاوري القطعة، اضغط على زر "بث الطباعة / Générer le PDF" في شريط الأدوات العلوي.
-2. ستفتح نافذة إعدادات الطباعة للمتصفح. ننصح دائماً بتهيئة الإعدادات كالتالي لضمان المظهر المثالي الخالي من الشوائب:
-   - تحديد الاتجاه: 'عمودي' (Portrait).
-   - تحديد حجم الورق: 'A4' بدقة 100%.
-   - تفعيل خيار 'طباعة رسومات الخلفية' (Print Background Graphics) لإظهار ألوان العقود وخريطة الـ Orthophotoplan بوضوح.
-   - إلغاء تفعيل خيار 'الهوامش الرأسية والتذييلات' (Headers and Footers) لمنع ظهور روابط المتصفح وتاريخ اليوم في حاشية الورقة.
-3. التثبيت كملف PDF رقمي جاهز للإرسال الفوري لخدمات ANCFCC.`
+• طريقة الحفظ كـ PDF:
+  - اضغط على زر 'طباعة / Générer PDF'.
+  - في إعدادات الطباعة للمتصفح: اختر حفظ بتنسيق PDF، الحجم A4، تفعيل 'رسومات الخلفية' (مهم لإظهار الخرائط والصور الجوية)، وإلغاء تفعيل 'الهوامش الرأسية والتذييلات'.`
     }
   ];
 
   const sectionsFr = [
     {
       id: "intro",
-      title: "1. Présentation de l'Application",
+      title: "1. Introduction Globale & Architecture",
       icon: <Info className="w-5 h-5 text-indigo-400" />,
-      content: "Parcel Layout Designer est une plateforme SaaS hautement professionnelle, spécialement conçue pour les cabinets d'Ingénieurs Géomètres Topographes (IGT) au Maroc pour la production express de plans de délimitation, levés parcellaires et dossiers techniques requis par l'ANCFCC. L'application combine calculs géodésiques de grande précision et mise en page cartographique interactive moderne agrémentée d'extraits d'imagerie aérienne orthorectifiée."
+      content: "L'application Parcel Layout Designer est un outil SaaS de pointe, conçu pour aider les Ingénieurs Géomètres Topographes (IGT) au Maroc à concevoir des plans de délimitation conformes aux normes administratives de l'ANCFCC. L'application intègre un espace d'édition géométrique temps réel, un moteur de rendu de cartes interactives et un studio d'impression automatisé A4."
     },
     {
-      id: "import",
-      title: "2. Importation des Levés & Formats Supports",
-      icon: <Layers className="w-5 h-5 text-emerald-400" />,
-      content: `L'application gère l'importation de levés de terrain dans une multitude de formats industriels :
-• CAO / DAO : Fichiers AutoCAD DXF (points isolés ou polylignes fermées).
-• GIS / SIG : Fichiers GeoPackage (.gpkg) et GeoJSON standard.
-• Tableurs : Fichiers Microsoft Excel (.xlsx / .xls) et CSV délimités.
-• Google Earth : Fichiers parcellaires KML / KMZ.
-
-Procédure :
-1. Dans le volet latéral gauche, cliquez sur 'Choisir un fichier d'arpentage'.
-2. Le traceur identifie automatiquement les coordonnées, dessine la géométrie et ajuste la vue de la carte.
-3. Le tableau des sommets et des tronçons de la parcelle (P1, P2...) est instantanément généré avec calcul automatique des distances et des gisements.`
+      id: "live_preview",
+      title: "2. Outil de Prévisualisation Interactive de la Carte",
+      icon: <Eye className="w-5 h-5 text-emerald-400" />,
+      content: `La carte interactive de prévisualisation en temps réel vous permet de :
+• Localiser géographiquement la parcelle sur une imagerie satellite de haute précision (Orthophotoplan).
+• Faire glisser et déplacer les sommets de la parcelle directement sur l'écran pour réajuster visuellement l'emprise.
+• Recalculer instantanément les coordonnées Lambert (X, Y), la surface totale et le périmètre à chaque déplacement de point.
+• Basculer entre différents fonds de carte (Imagerie Hybride, Carte routière vectorielle classique ou canevas neutre blanc d'ingénierie).`
     },
     {
-      id: "crs",
-      title: "3. Référencement Géo-Centrique & Métrique",
-      icon: <MapPin className="w-5 h-5 text-amber-500" />,
-      content: `Le système intègre l'ensemble du canevas géodésique marocain :
-• Système géocentrique lié au Datum Elipsoïdal de Merchich.
-• Projection Conique Conforme de Lambert en ses 4 zones de couverture nationale (Zone I, Zone II, Zone III, Zone IV).
-• Conversion de coordonnées vers les codes de projection officiels (e.g., EPSG:26191 / Lambert Zone I).
-• Double quantification de la surface : calcul de la Surface Complète Horizontale (projetée locale) et calcul géodésique précis de l'aire sur l'ellipsoïde terrestre.`
+      id: "modify_drawing",
+      title: "3. Édition du Polygone & Ajout de Sommets",
+      icon: <PlusCircle className="w-5 h-5 text-amber-400" />,
+      content: `Vous pouvez modifier et enrichir la géométrie parcellaires de deux façons complémentaires :
+• Édition numérique directe : Modifiez directement les valeurs de l'Est (X), du Nord (Y) ou de l'Altitude (Z) dans le tableau des sommets. L'emprise de la parcelle s'adapte immédiatement sur la carte.
+• Ajout de nouveaux points :
+  1. Utilisez le formulaire 'Ajouter un point au polygone' sous le tableau.
+  2. Saisissez les coordonnées de départ X, Y et l'altitude Z.
+  3. Cliquez sur 'Ajouter un point' pour insérer le nouveau sommet et mettre à jour la surface projetée.
+• Suppression de sommets : Supprimez n'importe quel point superflu d'un clic sur l'icône de corbeille rouge pour simplifier le mouchard géométrique.`
     },
     {
-      id: "edit",
-      title: "4. Édition Interactive & Déclaration des Riverains",
+      id: "import_data",
+      title: "4. Importation Simplifiée des Levés Topographiques",
+      icon: <UploadCloud className="w-5 h-5 text-sky-400" />,
+      content: `Gagnez du temps en important des données brutes récoltées sur le terrain :
+• Formats pris en charge : AutoCAD DXF (lignes ou points), Google Earth KML/KMZ, fichiers d'arpentage GPX, feuilles de calcul Excel (.xlsx) et fichiers CSV.
+• Indiquez la projection d'origine (Source CRS) de votre fichier pour assurer une projection conforme lors du traitement.
+• Après le chargement, le système extrait automatiquement les contours fermés, trace la parcelle sur la carte de localisation et remplit la table des sommets (P1, P2...).`
+    },
+    {
+      id: "layout_setup",
+      title: "5. Configuration de la Mise en Page & Personnalisation des Textes",
       icon: <Settings className="w-5 h-5 text-blue-400" />,
-      content: `Dans l'interface de l'éditeur cartographique :
-• Éditez manuellement les coordonnées X, Y ou l'altitude Z de chaque sommet si nécessaire.
-• Spécifiez le nom ou la désignation des Riverains (propriétaires adjacents, routes, oued, domaine public, titre foncier limitrophe) pour chaque côté de la limite afin de compléter la table de gisement.
-• Remplissez les données administratives globales : Dossier N°, Province / Préfecture, Commune, Nom du Propriétaire, District et Localité.`
+      content: `Pour configurer le cartouche et personnaliser le rendu visuel des textes et des sommets, utilisez le formulaire de contrôle latéral :
+• Métadonnées de l'affaire : Saisissez le numéro de dossier technique, le nom du propriétaire, la province/préfecture, la commune et la localité.
+• Gestion de l'Échelle : Laissez le système calculer l'échelle optimale automatique ou spécifiez une échelle manuelle standardisée pour respecter les dimensions de la feuille.
+• Saisie des Riverains : Renseignez le riverain attenant (ex: Route Nationale, Propriété Privée...) pour l'afficher le long des limites sur le plan et dans le carnet des limites.
+• Préfixe de Sommet Personnalisé : Choisissez la lettre de départ pour désigner les sommets : la lettre P (Par défaut), la lettre B (Borne), sans lettre (chiffres seuls) ou saisissez un préfixe personnalisé de votre choix (ex: T, S). Le plan et les tables se mettent instantanément à jour.
+• Tailles et Position des Textes (Polices & Décalage) : Ajustez finement le rendu visuel de votre plan à l'aide de curseurs interactifs :
+  1. Taille de police des sommets pour augmenter/diminuer la visibilité des noms des points.
+  2. Taille de police des étiquettes pour les longueurs des côtés et les noms des riverains.
+  3. Distance de décalage (Offset) des étiquettes par rapport aux segments de limites pour éviter les superpositions d'écritures et aérer votre plan technique.
+• Maillage des Coordonnées : Ajustez l'intervalle de la grille en mètres (Grille) pour adapter le quadrillage (carroyage) sur le plan.`
     },
     {
-      id: "print",
-      title: "5. Production du Livrable Administratif à Double Page",
+      id: "print_choice",
+      title: "6. Choix d'Impression & Exportation PDF",
       icon: <Printer className="w-5 h-5 text-rose-500" />,
-      content: `L'outil exporte un modèle de dossier de délimitation de deux pages A4 hautement standardisé dans un panneau d'impression unique :
-• Page 1 : Rapport technique officiel & Carnet des Sommets :
-  - Bloc d'en-tête dynamique contenant les métadonnées administratives.
-  - Tableau de calcul structuré des coordonnées d'arpentage d'une précision infime.
-  - Insert de l'extrait d'imagerie aérienne orthorectifiée (Orthophotoplan).
-  - Flèche Projet optionnelle : Un commutateur dans la barre supérieure permet d'activer une flèche rouge élégante pointant vers la parcelle depuis le titre « PROJET » pour localiser l'emprise sans compromettre la visibilité de ses contours.
+      content: `Nous avons réuni les configurations d'impression dans un même atelier de visualisation interactif :
+• Mode 'Impression avec page de garde' (anciennement Impression 1) :
+  - Génère un dossier administratif complet de deux pages A4.
+  - Page 1 : Page de garde officielle comprenant le cartouche administratif, le carnet de coordonnées complet (avec altitudes) et un extrait d'orthophotoplan aérien (avec flèche rouge 'Projet' activable).
+  - Page 2 : Plan topographique officiel à l'échelle avec grille de coordonnées, boussole d'orientation et tableau des limites et riverains.
 
-• Page 2 : Plan topographique officiel à l'échelle :
-  - Rendu à l'échelle standardisée (1/1000, 1/500, etc.) avec adaptation automatique optimale.
-  - Carroyage d'ingénieur (grille de coordonnées d'arpentage) indexé de manière dynamique.
-  - Boussole d'orientation moderne, rose des vents et tableau des riverains avec distances réelles.
+• Mode 'Impression sans page de garde' (anciennement Impression 2) :
+  - Produit un livrable condensé en une seule page horizontale (paysage) contenant le Plan Parcellaire seul.
+  - Comprend le titre officiel centré 'PLAN PARCELLAIRE', et intègre un badge élégant en bas de carte affichant la surface de la parcelle sous le format traditionnel marocain (Hectares . Ares . Centiares) : SURFACE : 1 H . 12 A . 40 Ca.
 
-• Fusion des modes (Nouveau) :
-  - Nous avons regroupé l'Impression 1 (A4 + Plan) et l'Impression 2 (Plan seul) sous le même onglet de visualisation. Vous pouvez basculer entre les deux instantanément à l'aide des commutateurs dédiés en haut du panneau.`
-    },
-    {
-      id: "export",
-      title: "6. Exportation PDF & Conseils de Print",
-      icon: <FileText className="w-5 h-5 text-teal-400" />,
-      content: `Pour sauvegarder et exporter le document au format PDF :
-1. Assurez-vous d'avoir configuré vos échelles et riverains, puis cliquez sur le bouton rouge 'Générer le PDF / Imprimer' dans la barre de fonctionnalités.
-2. Dans la boîte de dialogue système d'impression de votre navigateur, modifiez les paramètres critiques suivants pour un rendu sans bordure parfait :
-   - Destination : 'Enregistrer au format PDF'.
-   - Orientation : 'Portrait'.
-   - Format de papier : 'A4' (Échelle 100%).
-   - Cochez 'Graphiques d'arrière-plan' pour forcer l'imagerie aérienne et les contours parcellaires en couleur.
-   - Décochez 'En-têtes et pieds de page' pour éliminer les URLs et dates automatiques du navigateur en marge.`
+• Conseils d'enregistrement PDF :
+  - Cliquez sur 'Générer le PDF / Imprimer' dans la barre d'outils.
+  - Dans la boîte de dialogue d'impression de votre navigateur, veillez à cocher l'option 'Graphiques d'arrière-plan' pour inclure l'imagerie aérienne et les couleurs, et désélectionnez l'option 'En-têtes et pieds de page'.`
     }
   ];
 
-  // Visual Interactive Step-by-Step Guide with Mock Captures
+  // Expanded Visual Step-by-Step with precise interactive mockup representations
   const visualSteps = [
     {
       step: "1",
-      titleAr: "استيراد ملف الرفع الطبوغرافي",
-      titleFr: "Importation du fichier d'arpentage",
-      descAr: "اضغط على زر استيراد الملفات باللوحة الجانبية، واختر ملفك (KML, DXF, GPX, CSV, Excel). سيقوم النظام فوراً برسم المضلع وتحديد حدود العقار.",
-      descFr: "Cliquez sur 'Choisir un fichier' dans le volet gauche et sélectionnez votre fichier de levé. Le polygone est immédiatement tracé sur la carte.",
-      captureType: "upload",
+      titleAr: "المعاينة الحية وتحريك نقاط الحدود",
+      titleFr: "Aperçu en direct & Déplacement des points",
+      descAr: "عاين القطعة الأرضية فوق الصور الجوية مباشرة. يمكنك سحب أي نقطة حدود بالفأرة وتغيير موقعها، وسيتم تعديل الإحداثيات والمساحة الإجمالية في نفس اللحظة.",
+      descFr: "Visualisez la parcelle directement sur l'imagerie satellite. Glissez n'importe quel sommet avec la souris : les coordonnées et la surface se mettent à jour instantanément.",
+      captureType: "live_preview_mock",
       badgeColor: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
     },
     {
       step: "2",
-      titleAr: "ضبط نظام الإحداثيات والمنطقة",
-      titleFr: "Sélection de la Zone Lambert Maroc",
-      descAr: "اختر نظام الإحداثيات المناسب للمشروع (لامبرت المغرب Zone I, II, III, IV) مع نظام مرشيش للحصول على حساب دقيق فوري للمساحات الجيوديزية.",
-      descFr: "Sélectionnez la zone Lambert nationale (Zone I, II, III ou IV) sous le système Merchich pour assurer la conformité métrique et légale de vos plans.",
-      captureType: "projection",
+      titleAr: "تعديل المضلع يدوياً وإضافة نقطة",
+      titleFr: "Modification manuelle & Ajout de point",
+      descAr: "اضغط على أي حقل إحداثي (Est / Nord) لتعديل قيمته بدقة هندسية، أو أدخل إحداثيات نقطة جديدة في حقول الإضافة السريعة لتوسيع مضلع القطعة.",
+      descFr: "Cliquez sur une coordonnée (Est / Nord) pour modifier sa valeur numérique, ou utilisez les champs d'ajout rapide pour insérer de nouveaux sommets au tracé.",
+      captureType: "add_point_mock",
       badgeColor: "bg-amber-500/10 text-amber-400 border-amber-500/20"
     },
     {
       step: "3",
-      titleAr: "ملء المعلومات وتحديد المجاورين",
-      titleFr: "Données administratives & Riverains",
-      descAr: "املأ رقم الملف التقني واسم المالك، وعيّن أسماء المجاورين (ملك خاص، طريق، إلخ) لكل ضلع مباشرة على الخريطة أو في جدول الأضلاع التفاعلي.",
-      descFr: "Saisissez les métadonnées (Dossier, Propriétaire, Province) et écrivez directement le nom des riverains sur chaque tronçon de limite foncière.",
-      captureType: "details",
+      titleAr: "تخصيص تسميات النقط والكتابة على الخريطة",
+      titleFr: "Personnalisation des Sommets & Textes",
+      descAr: "اختر بادئة تسمية النقط (P, B، بادئة مخصصة، أو أرقام فقط)، وتحكم بحجم خط كتابة القمم، حجم خط الأطوال والمجاورين، ومسافة تباعدها (Offset) عن الأضلاع لتجنب تداخل النصوص.",
+      descFr: "Configurez le préfixe des sommets (P, B, personnalisé, ou chiffres seuls), ajustez la taille des polices des points/étiquettes et la distance de décalage (Offset) pour éviter les superpositions.",
+      captureType: "scale_labels_mock",
       badgeColor: "bg-blue-500/10 text-blue-400 border-blue-500/20"
     },
     {
       step: "4",
-      titleAr: "فتح معاينة الملف التقني للطباعة",
-      titleFr: "Visualisation du Dossier de Délimitation",
-      descAr: "اضغط على زر 'الملف التقني (طباعة)' الموحد في القائمة العلوية لتنتقل فوراً إلى واجهة تنسيق المستندات الرسمية وإعداد مقاييس الرسم.",
-      descFr: "Cliquez sur l'unique bouton 'الملف التقني (طباعة)' dans le menu supérieur pour basculer vers l'atelier de prévisualisation A4 professionnel.",
-      captureType: "preview_btn",
+      titleAr: "الطباعة مرفوقة بصفحة الغلاف",
+      titleFr: "Impression avec page de garde",
+      descAr: "النمط الأول: يولد ملفاً متكاملاً من صفحتين بحجم A4. صفحة غلاف رسمية تشمل جدول الإحداثيات وخريطة Orthophotoplan، تليها صفحة المخطط الطبوغرافي الشامل.",
+      descFr: "Option 1 : Dossier technique de 2 pages A4. Page 1 : Page de garde officielle avec tableau des sommets et orthophotoplan. Page 2 : Plan de délimitation à l'échelle.",
+      captureType: "with_cover_mock",
       badgeColor: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
     },
     {
       step: "5",
-      titleAr: "التبديل الفوري بين (طباعة 1) و (طباعة 2)",
-      titleFr: "Bascule directe (Impression 1 ou 2)",
-      descAr: "جديد: من شاشة المعاينة ذاتها، اختر بين 'طباعة 1' (الملف المزدوج: معلومات + المخطط الطبوغرافي) أو 'طباعة 2' (مخطط وحيد بلقطة كاملة مع العنوان والحدود).",
-      descFr: "Nouveau : Depuis le même espace, basculez en un clic entre 'Impression 1' (Dossier double A4 + Plan) et 'Impression 2' (Plan parcellaire seul avec surface).",
-      captureType: "switcher",
+      titleAr: "الطباعة بدون صفحة الغلاف",
+      titleFr: "Impression sans page de garde",
+      descAr: "النمط الثاني: مخطط هندسي مدمج في صفحة واحدة أفقية (Plan Parcellaire) يحمل عنواناً بارزاً وشارة المساحة الرسمية مقسمة بالهكتار والآر والسنتيار.",
+      descFr: "Option 2 : Document de plan parcellaire sur une seule page paysage. Comprend un titre principal clair et un badge de surface traditionnel (Ha . A . Ca) en bas.",
+      captureType: "without_cover_mock",
       badgeColor: "bg-pink-500/10 text-pink-400 border-pink-500/20"
     },
     {
       step: "6",
-      titleAr: "التصدير النهائي وحفظ الملف PDF",
-      titleFr: "Exportation PDF haute fidélité",
-      descAr: "اضغط على طباعة، وفي إعدادات المتصفح فعّل خيار 'رسومات الخلفية' وألغِ 'الهوامش الرأسية والتذييلات' لحفظ ملف PDF نظيف ومطابق تماماً.",
-      descFr: "Cliquez sur Imprimer. Activez 'Graphiques d'arrière-plan' et masquez les 'En-têtes' du navigateur pour un document final impeccable.",
-      captureType: "print_setup",
+      titleAr: "التصدير النهائي والتثبيت كـ PDF",
+      titleFr: "Exportation PDF & Paramètres navigateur",
+      descAr: "اضغط على طباعة، وفي إعدادات المتصفح تأكد من تفعيل خيار 'رسومات الخلفية' لحفظ ملف PDF كامل الألوان وبجودة أوتوكاد عالية الدقة.",
+      descFr: "Cliquez sur Imprimer. Veillez à activer l'option 'Graphiques d'arrière-plan' pour sauvegarder un document PDF couleur haute définition.",
+      captureType: "print_setup_mock",
       badgeColor: "bg-teal-500/10 text-teal-400 border-teal-500/20"
     }
   ];
 
-  const sections = guideLang === "ar" ? sectionsAr : sectionsFr;
+  const sections = isAr ? sectionsAr : sectionsFr;
   const filteredSections = sections.filter(sec => 
     sec.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
     sec.content.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Helper function to render a beautiful mock screen capture to visualize steps
+  // Helper function to render a beautiful mock screen capture for the expanded guide
   const renderMockCapture = (type: string) => {
     switch (type) {
-      case "upload":
+      case "live_preview_mock":
         return (
-          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-4 flex flex-col justify-center items-center font-sans overflow-hidden">
-            {/* Camera badge overlay */}
-            <div className="absolute top-2 right-2 bg-slate-900 border border-slate-750/80 px-1.5 py-0.5 rounded text-[8px] text-emerald-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
-              <Camera className="w-2.5 h-2.5 text-emerald-400 animate-pulse" />
-              <span>Capture Screen</span>
+          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-3 flex flex-col justify-center items-center font-sans overflow-hidden">
+            <div className="absolute top-1.5 right-1.5 bg-slate-900 border border-slate-750/80 px-1 py-0.5 rounded text-[7px] text-emerald-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
+              <Camera className="w-2 h-2 text-emerald-400 animate-pulse" />
+              <span>Live Map Preview</span>
             </div>
-            {/* Upload Mock Graphic */}
-            <div className="w-full max-w-[200px] border-2 border-dashed border-emerald-500/30 bg-emerald-500/5 rounded-lg p-3 flex flex-col items-center gap-1 text-center">
-              <UploadCloud className="w-6 h-6 text-emerald-400 animate-bounce" />
-              <span className="text-[10px] font-bold text-slate-200">levé_terrain_maroc.kml</span>
-              <span className="text-[8px] text-slate-500 font-mono">14.2 KB (GeoJSON Polygon)</span>
+            {/* Draw Simulated interactive polygon */}
+            <svg className="w-24 h-20 text-emerald-400" viewBox="0 0 100 80">
+              <polygon points="20,20 80,15 70,65 30,55" fill="rgba(16, 185, 129, 0.15)" stroke="#10b981" strokeWidth="1.5" />
+              <circle cx="20" cy="20" r="3.5" fill="#f59e0b" className="animate-ping" />
+              <circle cx="20" cy="20" r="2.5" fill="#f59e0b" />
+              <circle cx="80" cy="15" r="2.5" fill="#10b981" />
+              <circle cx="70" cy="65" r="2.5" fill="#10b981" />
+              <circle cx="30" cy="55" r="2.5" fill="#10b981" />
+              <text x="12" y="15" fill="#ffffff" style={{ fontSize: "6px" }}>P1 (Drag)</text>
+            </svg>
+            <div className="text-[7.5px] text-slate-400 mt-1 font-mono text-center">
+              Surface: 4 H . 12 A . 08 Ca | Perim: 1,420 m
             </div>
-            {/* Cursor pointing */}
-            <div className="absolute bottom-2 left-[55%] pointer-events-none animate-pulse">
+          </div>
+        );
+      case "add_point_mock":
+        return (
+          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-3 flex flex-col justify-center items-center font-sans overflow-hidden">
+            <div className="absolute top-1.5 right-1.5 bg-slate-900 border border-slate-750/80 px-1 py-0.5 rounded text-[7px] text-amber-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
+              <Camera className="w-2 h-2 text-amber-400" />
+              <span>Coordinates Editor</span>
+            </div>
+            <div className="w-full max-w-[220px] bg-slate-900 border border-slate-800 rounded p-1.5 space-y-1">
+              <div className="flex gap-1 text-[7.5px] text-slate-300 font-bold">
+                <div className="flex-1">X (Est): <span className="bg-slate-950 px-1 py-0.5 rounded text-amber-400 font-mono">315482.40</span></div>
+                <div className="flex-1">Y (Nord): <span className="bg-slate-950 px-1 py-0.5 rounded text-amber-400 font-mono">284195.12</span></div>
+              </div>
+              <button className="w-full bg-indigo-600/90 text-[7px] text-white py-0.5 rounded font-black flex items-center justify-center gap-1">
+                <PlusCircle className="w-2.5 h-2.5" />
+                <span>إضافة نقطة جديدة للمضلع</span>
+              </button>
+            </div>
+          </div>
+        );
+      case "scale_labels_mock":
+        return (
+          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-2 flex flex-col justify-center items-center font-sans overflow-hidden">
+            <div className="absolute top-1 right-1 bg-slate-900 border border-slate-750/80 px-1 py-0.5 rounded text-[6px] text-blue-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
+              <Camera className="w-2 h-2 text-blue-400" />
+              <span>Layout Config</span>
+            </div>
+            <div className="w-full max-w-[240px] space-y-1 text-[7px] mt-2">
+              <div className="flex gap-1">
+                <div className="flex-1 bg-slate-900 p-1 rounded border border-slate-800">
+                  <span className="text-slate-500 font-bold block">السلم / ÉCHELLE</span>
+                  <span className="text-emerald-400 font-black">1/1000 (تلقائي)</span>
+                </div>
+                <div className="flex-1 bg-slate-900 p-1 rounded border border-slate-800">
+                  <span className="text-slate-500 font-bold block">المجاورين / RIVERAINS</span>
+                  <span className="text-slate-200 truncate block">طريق عام بعرض 10م</span>
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <div className="flex-1 bg-slate-900 p-1 rounded border border-slate-800">
+                  <span className="text-slate-500 font-bold block">بادئة النقط / PREFIX</span>
+                  <span className="text-amber-500 font-black">B1, B2... (Borne)</span>
+                </div>
+                <div className="flex-1 bg-slate-900 p-1 rounded border border-slate-800">
+                  <span className="text-slate-500 font-bold block">الحجم والإزاحة / FONTS & OFFSET</span>
+                  <span className="text-indigo-400 font-black">Vertex: 8.5px | Offset: 7m</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      case "with_cover_mock":
+        return (
+          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-2 flex flex-col justify-center items-center font-sans overflow-hidden">
+            <div className="absolute top-1.5 right-1.5 bg-slate-900 border border-slate-750/80 px-1 py-0.5 rounded text-[7px] text-indigo-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
+              <Camera className="w-2 h-2 text-indigo-400" />
+              <span>Impression Type 1</span>
+            </div>
+            <div className="flex gap-2 items-center">
+              {/* Page 1 (Cover) */}
+              <div className="w-10 h-14 bg-white border border-slate-400 rounded p-0.5 flex flex-col justify-between">
+                <div className="w-full h-1 bg-indigo-600 rounded-xs" />
+                <div className="w-full h-3 bg-slate-100 rounded-xs flex items-center justify-center text-[4px] text-slate-800 font-bold">ROYAUME DU MAROC</div>
+                <div className="w-6 h-6 bg-slate-200 rounded-xs mx-auto" />
+                <div className="w-full h-1 bg-indigo-600 rounded-xs" />
+              </div>
+              <span className="text-slate-500 text-[10px] font-black">→</span>
+              {/* Page 2 (Plan) */}
+              <div className="w-10 h-14 bg-white border border-slate-400 rounded p-0.5 flex flex-col justify-between">
+                <div className="w-full h-6 bg-slate-100 rounded-xs flex items-center justify-center text-[4px] text-slate-800 font-mono">GRID / MAP</div>
+                <div className="w-full h-2 bg-slate-200 rounded-xs" />
+              </div>
+            </div>
+          </div>
+        );
+      case "without_cover_mock":
+        return (
+          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-2 flex flex-col justify-center items-center font-sans overflow-hidden">
+            <div className="absolute top-1.5 right-1.5 bg-slate-900 border border-slate-750/80 px-1 py-0.5 rounded text-[7px] text-pink-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
+              <Camera className="w-2 h-2 text-pink-400" />
+              <span>Impression Type 2</span>
+            </div>
+            {/* Single Landscape Page */}
+            <div className="w-16 h-11 bg-white border border-slate-400 rounded p-1 flex flex-col justify-between">
+              <div className="w-full text-center text-[4px] font-black text-slate-950 border-b border-slate-300 pb-0.5">PLAN PARCELLAIRE</div>
+              <div className="w-full h-4 bg-slate-100 rounded-xs flex items-center justify-center text-[3px] text-slate-600">MAP PREVIEW WITH GRID LINES</div>
+              {/* Area Badge Mock */}
+              <div className="bg-stone-50 border border-stone-800 text-[3.5px] font-bold py-0.5 text-center leading-none mt-1">
+                SURFACE : 1 H . 24 A . 15 Ca
+              </div>
+            </div>
+          </div>
+        );
+      case "print_setup_mock":
+        return (
+          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-3 flex flex-col justify-center items-center font-sans overflow-hidden">
+            <div className="absolute top-1.5 right-1.5 bg-slate-900 border border-slate-750/80 px-1 py-0.5 rounded text-[7px] text-teal-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
+              <Camera className="w-2 h-2 text-teal-400" />
+              <span>Browser Settings</span>
+            </div>
+            <div className="w-full max-w-[210px] space-y-1 bg-slate-900 p-2 rounded text-left text-[7.5px]">
               <div className="flex items-center gap-1">
-                <MousePointer className="w-4 h-4 text-amber-500 fill-amber-500" />
-                <span className="bg-amber-500 text-slate-950 font-bold text-[8px] px-1 rounded-sm shadow-sm select-none">Import</span>
-              </div>
-            </div>
-          </div>
-        );
-      case "projection":
-        return (
-          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-4 flex flex-col justify-center items-center font-sans overflow-hidden">
-            <div className="absolute top-2 right-2 bg-slate-900 border border-slate-750/80 px-1.5 py-0.5 rounded text-[8px] text-amber-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
-              <Camera className="w-2.5 h-2.5 text-amber-400" />
-              <span>Capture Dropdown</span>
-            </div>
-            <div className="w-full max-w-[220px] bg-slate-900 border border-slate-750 rounded-lg p-2.5 text-left">
-              <span className="text-[8px] text-slate-400 block mb-1 font-bold uppercase tracking-wider">Projection Nationale</span>
-              <div className="bg-slate-950 border border-amber-500/60 p-2 rounded-md flex justify-between items-center text-[10px] font-bold text-slate-200">
-                <div className="flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Maroc Lambert Zone II</span>
+                <div className="w-2.5 h-2.5 rounded bg-emerald-500 flex items-center justify-center text-slate-950">
+                  <Check className="w-2 h-2 stroke-[3]" />
                 </div>
-                <span className="text-[8px] text-amber-400 font-mono">EPSG:26192</span>
+                <span className="text-slate-200 font-bold">Graphiques d'arrière-plan (Background)</span>
               </div>
-              <div className="mt-1.5 flex justify-between text-[8px] font-mono text-emerald-400">
-                <span>✓ Datum Merchich</span>
-                <span>✓ Conique Conforme</span>
-              </div>
-            </div>
-          </div>
-        );
-      case "details":
-        return (
-          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-3 flex flex-col justify-center items-center font-sans overflow-hidden">
-            <div className="absolute top-2 right-2 bg-slate-900 border border-slate-750/80 px-1.5 py-0.5 rounded text-[8px] text-blue-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
-              <Camera className="w-2.5 h-2.5 text-blue-400" />
-              <span>Capture Form</span>
-            </div>
-            <div className="w-full space-y-1.5 max-w-[240px]">
-              <div className="grid grid-cols-2 gap-1.5">
-                <div className="bg-slate-900 p-1.5 rounded border border-slate-800 text-[8px]">
-                  <span className="text-slate-500 block mb-0.5 font-bold">PROPRIÉTAIRE</span>
-                  <span className="text-slate-200 font-bold truncate block">OULAD ALI BEN JILLALI</span>
-                </div>
-                <div className="bg-slate-900 p-1.5 rounded border border-slate-800 text-[8px]">
-                  <span className="text-slate-500 block mb-0.5 font-bold">DOSSIER N°</span>
-                  <span className="text-amber-500 font-bold block font-mono">IGT-2026/894</span>
-                </div>
-              </div>
-              {/* Riverains mini snippet */}
-              <div className="bg-slate-900/50 p-1 border border-slate-800 rounded flex justify-between items-center text-[8px]">
-                <span className="text-slate-400 font-mono">Côté P1 - P2 :</span>
-                <span className="bg-slate-950 text-indigo-400 px-1.5 py-0.5 rounded font-bold border border-slate-750">Route Publique 10m</span>
-              </div>
-            </div>
-          </div>
-        );
-      case "preview_btn":
-        return (
-          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-4 flex flex-col justify-center items-center font-sans overflow-hidden">
-            <div className="absolute top-2 right-2 bg-slate-900 border border-slate-750/80 px-1.5 py-0.5 rounded text-[8px] text-indigo-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
-              <Camera className="w-2.5 h-2.5 text-indigo-400" />
-              <span>Capture Header</span>
-            </div>
-            {/* Glow Button Mock */}
-            <div className="bg-slate-900 border border-slate-800 px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 border-indigo-500/20 relative animate-pulse">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-amber-500 to-indigo-500 rounded-xl blur opacity-30 pointer-events-none" />
-              <Printer className="w-4 h-4 text-amber-500" />
-              <span className="text-[10.5px] font-black text-slate-100 tracking-wide">الملف التقني (طباعة)</span>
-              <MousePointer className="w-3.5 h-3.5 text-amber-400 fill-amber-400 absolute -bottom-1 -right-1" />
-            </div>
-          </div>
-        );
-      case "switcher":
-        return (
-          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-3 flex flex-col justify-center items-center font-sans overflow-hidden">
-            <div className="absolute top-2 right-2 bg-slate-900 border border-slate-750/80 px-1.5 py-0.5 rounded text-[8px] text-pink-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
-              <Camera className="w-2.5 h-2.5 text-pink-400" />
-              <span>Capture Switcher</span>
-            </div>
-            {/* Custom Interactive Switch Graphic */}
-            <div className="text-[8px] text-slate-500 uppercase tracking-widest font-black mb-1.5">Options d'affichage</div>
-            <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-850 max-w-[250px] w-full">
-              <div className="flex-1 bg-amber-600/90 text-white p-1.5 rounded-lg text-center text-[9px] font-bold shadow-sm select-none">
-                طباعة 1 (كامل)
-              </div>
-              <div className="flex-1 text-slate-400 p-1.5 rounded-lg text-center text-[9px] font-bold hover:text-slate-250 transition select-none">
-                طباعة 2 (المخطط فقط)
-              </div>
-            </div>
-            <span className="text-[7.5px] text-slate-500 mt-1">بث سريع بضغطة زر داخل نفس شاشة المعاينة</span>
-          </div>
-        );
-      case "print_setup":
-        return (
-          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-3 flex flex-col justify-center items-center font-sans overflow-hidden">
-            <div className="absolute top-2 right-2 bg-slate-900 border border-slate-750/80 px-1.5 py-0.5 rounded text-[8px] text-teal-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
-              <Camera className="w-2.5 h-2.5 text-teal-400" />
-              <span>Capture Options</span>
-            </div>
-            <div className="w-full max-w-[210px] space-y-1.5 bg-slate-900 p-2.5 rounded-lg text-left">
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded bg-emerald-500 flex items-center justify-center text-slate-950">
-                  <Check className="w-2.5 h-2.5 stroke-[3]" />
-                </div>
-                <span className="text-[8.5px] text-slate-200 font-bold">Graphiques d'arrière-plan</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded border border-slate-700 bg-slate-950" />
-                <span className="text-[8.5px] text-slate-400 font-medium">En-têtes et pieds de page</span>
-              </div>
-              <div className="pt-1 border-t border-slate-800 flex justify-between items-center text-[8px] font-mono text-slate-500">
-                <span>Format: A4</span>
-                <span>Échelle: 100%</span>
+              <div className="flex items-center gap-1">
+                <div className="w-2.5 h-2.5 rounded border border-slate-700 bg-slate-950" />
+                <span className="text-slate-400">En-têtes et pieds de page (Headers)</span>
               </div>
             </div>
           </div>
@@ -387,11 +390,10 @@ Procédure :
     }
   };
 
-  // Function to download/open a beautifully styled browser document
   const openExternalGuide = () => {
     const isArabic = guideLang === "ar";
     const dir = isArabic ? "rtl" : "ltr";
-    const title = isArabic ? "دليل الاستعمال | Parcel Layout Designer" : "Guide d'Utilisation | Parcel Layout Designer";
+    const title = isArabic ? "دليل الاستعمال المتكامل | Parcel Layout Designer" : "Guide d'Utilisation Intégral | Parcel Layout Designer";
     
     const htmlContent = `
       <!DOCTYPE html>
@@ -399,7 +401,7 @@ Procédure :
       <head>
         <meta charset="UTF-8">
         <title>${title}</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&family=Noto+Sans+Arabic:wght@400;500;700;900&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&family=Noto+Sans+Arabic:wght@400;500;700;900&display=swap" rel="stylesheet">
         <style>
           body {
             font-family: ${isArabic ? "'Noto Sans Arabic', 'Inter', sans-serif" : "'Inter', sans-serif"};
@@ -407,25 +409,25 @@ Procédure :
             color: #1e293b;
             padding: 40px 20px;
             margin: 0;
-            line-height: 1.7;
+            line-height: 1.8;
           }
           .container {
-            max-width: 900px;
+            max-width: 950px;
             margin: 0 auto;
             background: #ffffff;
             border-radius: 16px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-            padding: 40px;
+            box-shadow: 0 4px 25px rgba(0,0,0,0.06);
+            padding: 45px;
             border: 1px solid #e2e8f0;
           }
           .title-area {
             text-align: center;
-            border-bottom: 3px double #e2e8f0;
-            padding-bottom: 24px;
-            margin-bottom: 32px;
+            border-bottom: 3px double #cbd5e1;
+            padding-bottom: 28px;
+            margin-bottom: 35px;
           }
           h1 {
-            color: #1e3a8a;
+            color: #0f172a;
             margin: 0;
             font-size: 28px;
             font-weight: 900;
@@ -433,22 +435,22 @@ Procédure :
           .subtitle {
             font-size: 14px;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: #64748b;
-            margin-top: 8px;
+            letter-spacing: 0.12em;
+            color: #475569;
+            margin-top: 10px;
             font-weight: 700;
           }
           .author {
             font-size: 13px;
-            color: #4f46e5;
+            color: #ea580c;
             font-weight: 700;
-            margin-top: 6px;
+            margin-top: 8px;
           }
           .visual-step-card {
-            background: #fdfbf7;
-            border: 1px solid #e2e8f0;
+            background: #fafaf9;
+            border: 1px solid #e7e5e4;
             border-radius: 12px;
-            padding: 20px;
+            padding: 22px;
             margin-bottom: 24px;
             display: flex;
             gap: 20px;
@@ -459,8 +461,8 @@ Procédure :
             color: white;
             font-size: 18px;
             font-weight: 900;
-            width: 36px;
-            height: 36px;
+            width: 38px;
+            height: 38px;
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -472,22 +474,22 @@ Procédure :
           }
           .step-title {
             font-size: 16px;
-            font-weight: 800;
-            color: #0f172a;
-            margin: 0 0 8px 0;
+            font-weight: 900;
+            color: #1e293b;
+            margin: 0 0 10px 0;
           }
           .step-text {
             font-size: 14px;
-            color: #334155;
+            color: #475569;
             margin: 0;
           }
           .section {
             margin-top: 40px;
             margin-bottom: 28px;
-            padding: 20px;
+            padding: 25px;
             background: #f1f5f9;
-            border-left: 5px solid ${isArabic ? "transparent" : "#4f46e5"};
-            border-right: 5px solid ${isArabic ? "#4f46e5" : "transparent"};
+            border-left: 6px solid ${isArabic ? "transparent" : "#d97706"};
+            border-right: 6px solid ${isArabic ? "#d97706" : "transparent"};
             border-radius: 8px;
           }
           h2 {
@@ -495,7 +497,7 @@ Procédure :
             color: #0f172a;
             margin-top: 0;
             margin-bottom: 12px;
-            font-weight: 800;
+            font-weight: 900;
           }
           .content {
             font-size: 14.5px;
@@ -513,21 +515,21 @@ Procédure :
           }
           .button-print {
             display: inline-block;
-            margin-bottom: 20px;
-            background-color: #4f46e5;
+            margin-bottom: 25px;
+            background-color: #d97706;
             color: #ffffff;
-            padding: 10px 20px;
+            padding: 12px 24px;
             border-radius: 8px;
             text-decoration: none;
             font-weight: 700;
-            font-size: 13px;
+            font-size: 13.5px;
             cursor: pointer;
             transition: all 0.2s;
             border: none;
-            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
+            box-shadow: 0 4px 6px -1px rgba(217, 119, 6, 0.2);
           }
           .button-print:hover {
-            background-color: #4338ca;
+            background-color: #b45309;
           }
           @media print {
             body { background: white; padding: 0; }
@@ -542,12 +544,12 @@ Procédure :
         </div>
         <div class="container">
           <div class="title-area">
-            <h1>${isArabic ? "دليل الاستعمال المصور - منصة المخططات الطبوغرافية" : "GUIDE D'UTILISATION VISUEL ET DÉTAILLÉ"}</h1>
-            <div class="subtitle">Parcel Layout Designer / Pro v1.0</div>
-            <div class="author">${isArabic ? "إعداد المهندس: عبد الله واضو" : "Élaboré par : Abdellah Ouaddou"}</div>
+            <h1>${isArabic ? "دليل الاستعمال المصور والشامل - مخصص للرفع وتصميم المخططات" : "MANUEL D'UTILISATION COMPLET & IMAGE"}</h1>
+            <div class="subtitle">Parcel Layout Designer / Professional Suite</div>
+            <div class="author">${isArabic ? "المهندس الواضع: عبد الله واضو" : "Conçu par : Abdellah Ouaddou"}</div>
           </div>
 
-          <h3>${isArabic ? "المرشد البصري السريع (خطوات الاستعمال):" : "Guide Visuel Rapide (Étapes clés) :"}</h3>
+          <h3>${isArabic ? "أولاً: الدليل البصري التفاعلي (خطوات العمل):" : "I. Guide Visuel Rapide (Étapes clés) :"}</h3>
           ${visualSteps.map(step => `
             <div class="visual-step-card">
               <div class="step-num">${step.step}</div>
@@ -560,7 +562,7 @@ Procédure :
 
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 40px 0;" />
 
-          <h3>${isArabic ? "فصول الدليل المنهجي بالتفصيل:" : "Manuel Détaillé de l'Application :"}</h3>
+          <h3>${isArabic ? "ثانياً: الشرح المنهجي التفصيلي لوظائف التطبيق:" : "II. Manuel d'utilisation approfondi :"}</h3>
           ${sections.map(sec => `
             <div class="section">
               <h2>${sec.title}</h2>
@@ -576,13 +578,11 @@ Procédure :
       </html>
     `;
 
-    // Try to open with window.open or dynamic blob
     try {
       const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
     } catch (e) {
-      // Fallback: alert/create dynamic iframe if popup blocked or standard window open failed
       const newWindow = window.open();
       if (newWindow) {
         newWindow.document.write(htmlContent);
@@ -605,12 +605,12 @@ Procédure :
         <div>
           <h3 className="text-lg font-black text-amber-500 flex items-center gap-2 tracking-wide">
             <BookOpen className="w-5 h-5 text-amber-500" />
-            <span>{isAr ? "دليل استعمال التطبيق بالتفصيل" : "Guide d'Utilisation Interactif"}</span>
+            <span>{isAr ? "دليل الاستعمال المصور والشامل للتطبيق" : "Manuel d'Utilisation Intégral & Illustré"}</span>
           </h3>
           <p className="text-[10px] text-slate-400 mt-0.5">
             {isAr 
-              ? "دليل تفاعلي مدمج بلقطات توضيحية لتبسيط العمل على المصممين وغير المتخصصين"
-              : "Guide visuel avec captures d'écran simulées pour assister les experts et novices"}
+              ? "دليل كامل خطوة بخطوة يشرح: المعاينة الحية، تعديل الرسم، وإعداد الطباعة مرفوقة أو بدون صفحة الغلاف"
+              : "Guide détaillé pas à pas : prévisualisation active, édition, configuration d'échelle et choix de livraison"}
           </p>
         </div>
 
@@ -643,7 +643,7 @@ Procédure :
             title={isAr ? "فتح في تبويب مستقل وطباعة" : "Ouvrir dans un nouvel onglet pour impression"}
           >
             <ExternalLink className="w-3.5 h-3.5" />
-            <span>{isAr ? "معاينة في المتصفح" : "Ouvrir dans le navigateur"}</span>
+            <span>{isAr ? "معاينة بملء الشاشة" : "Ouvrir en plein écran"}</span>
           </button>
         </div>
       </div>
@@ -659,7 +659,7 @@ Procédure :
           }`}
         >
           <Camera className="w-4 h-4" />
-          <span>{isAr ? "المرشد البصري (لقطات الشاشة)" : "Guide Visuel (Captures)"}</span>
+          <span>{isAr ? "المرشد المصور (لقطات شاشة توضيحية)" : "Guide Illustré (Captures d'écran)"}</span>
         </button>
         <button
           onClick={() => setActiveTab("detailed")}
@@ -670,7 +670,7 @@ Procédure :
           }`}
         >
           <BookOpen className="w-4 h-4" />
-          <span>{isAr ? "الفصول المنهجية بالتفصيل" : "Manuel Détaillé"}</span>
+          <span>{isAr ? "الفصول والشروحات المنهجية بالتفصيل" : "Manuel d'Utilisation Détaillé"}</span>
         </button>
       </div>
 
@@ -693,7 +693,7 @@ Procédure :
                   </h4>
                 </div>
                 {/* Description text */}
-                <p className={`text-[11px] leading-relaxed text-slate-400 mb-5 ${isAr ? "text-right" : "text-left"}`}>
+                <p className={`text-[11px] leading-relaxed text-slate-400 mb-5 ${isAr ? "text-right animate-none" : "text-left"}`}>
                   {isAr ? step.descAr : step.descFr}
                 </p>
               </div>
@@ -764,11 +764,11 @@ Procédure :
       }`}>
         <HelpCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
         <div>
-          <span className="font-extrabold block mb-0.5">{isAr ? "نصيحة هامة للطباعة:" : "Astuce importante pour l'impression :"}</span>
+          <span className="font-extrabold block mb-0.5">{isAr ? "تلميحات هامة لتصميم مضلع القطع:" : "Conseil pour la numérisation :"}</span>
           <span className="text-[10.5px] text-slate-400 font-medium">
             {isAr 
-              ? "لتوليد الملف التقني بجودة احترافية كاملة الألوان، تذكر دائماً تفعيل خيار (طباعة رسومات الخلفية - Graphiques d'arrière-plan) وإلغاء خيار الهوامش التلقائية في واجهة الطباعة للمتصفح."
-              : "Pour générer le livrable topographique en haute-fidélité couleur, assurez-vous de cocher l'option 'Graphiques d'arrière-plan' et de décocher 'En-têtes et pieds de page' dans les paramètres de votre navigateur."
+              ? "لتعديل مضلع القطعة، يمكنك سحب النقاط مباشرة على الخريطة لرسم فوري، أو كتابة الإحداثيات في جدول القمم للحصول على الدقة الرياضية، ثم اختيار السلم المناسب ونمط الطباعة بالغطاء أو دونه من شريط خيارات المعاينة قبل تصدير ملف PDF."
+              : "Pour éditer votre parcelle, déplacez ses sommets sur la carte interactive, ajustez ses coordonnées dans la table d'arpentage, configurez les riverains et l'échelle, puis basculez entre l'impression avec ou sans page de garde."
             }
           </span>
         </div>

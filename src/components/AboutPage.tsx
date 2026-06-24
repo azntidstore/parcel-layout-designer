@@ -38,7 +38,7 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
             PARCEL LAYOUT DESIGNER
           </h2>
           <div className="mt-2 px-3 py-1 bg-slate-700/60 border border-slate-600 rounded-full text-xs font-bold text-amber-400 tracking-widest">
-            {isAr ? "الإصدار 1.0" : "VERSION 1.0"}
+            {isAr ? "الإصدار 1.1" : "VERSION 1.1"}
           </div>
 
           {/* Developer Stamp */}
@@ -151,7 +151,7 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
                 </div>
                 <div className="flex justify-between">
                   <span>Licence :</span>
-                  <span className="text-amber-500 font-bold">PRO v1.0</span>
+                  <span className="text-amber-500 font-bold">PRO v1.1</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Année de version:</span>

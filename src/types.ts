@@ -41,4 +41,9 @@ export interface DocumentSettings {
   scaleMode?: "auto" | "100" | "250" | "500" | "1000" | "2500" | "5000" | "custom";
   customScale?: number;
   dossierNumber: string;
+  vertexPrefixType?: "P" | "B" | "Custom" | "None";
+  customPrefix?: string;
+  vertexFontSize?: number;
+  labelFontSize?: number;
+  labelOffset?: number;
 }

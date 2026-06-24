@@ -22,6 +22,12 @@ import {
   ZoomIn,
   ZoomOut,
   Sparkles,
+  Navigation,
+  Ruler,
+  MapPin,
+  RotateCcw,
+  Check,
+  X,
 } from "lucide-react";
 
 interface ParcelMapProps {
@@ -63,6 +69,21 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     return "cad";
   })());
   const [isDeleteMode, setDeleteMode] = useState<boolean>(false);
+  
+  // Go To & Measurement tool states
+  const [isMeasuring, setIsMeasuring] = useState<boolean>(false);
+  const [measurePoints, setMeasurePoints] = useState<L.LatLng[]>([]);
+  const [tempMeasureMouse, setTempMeasureMouse] = useState<L.LatLng | null>(null);
+
+  const [isGotoOpen, setIsGotoOpen] = useState<boolean>(false);
+  const [gotoType, setGotoType] = useState<"lambert" | "wgs84">("lambert");
+  const [gotoX, setGotoX] = useState<string>("");
+  const [gotoY, setGotoY] = useState<string>("");
+  const [gotoLat, setGotoLat] = useState<string>("");
+  const [gotoLng, setGotoLng] = useState<string>("");
+  const [gotoMarkerLatLng, setGotoMarkerLatLng] = useState<L.LatLng | null>(null);
+  const [gotoError, setGotoError] = useState<string>("");
+
   const [mouseCoords, setMouseCoords] = useState<{
     lat: number;
     lng: number;
@@ -100,6 +121,18 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     labelMarkers: [],
     gridLines: [],
   });
+
+  const measureLayersRef = useRef<{
+    polyline: L.Polyline | null;
+    tempPolyline: L.Polyline | null;
+    markers: L.Marker[];
+  }>({
+    polyline: null,
+    tempPolyline: null,
+    markers: [],
+  });
+
+  const gotoLayerRef = useRef<L.Marker | null>(null);
 
   const activeCRS = (settings.projectionSystem && settings.projectionSystem.startsWith("EPSG:")
     ? settings.projectionSystem
@@ -249,6 +282,151 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
       map.off("click", handleMapClick);
     };
   }, [isDrawingMode, onAddVertex, activeCRS, parcel.vertices]);
+
+  // Mutual exclusion of tools
+  useEffect(() => {
+    if (isMeasuring) {
+      if (isDrawingMode) setDrawingMode(false);
+      if (isDeleteMode) setDeleteMode(false);
+    }
+  }, [isMeasuring]);
+
+  useEffect(() => {
+    if (isDrawingMode || isDeleteMode) {
+      setIsMeasuring(false);
+    }
+  }, [isDrawingMode, isDeleteMode]);
+
+  // Distance Measurement event listeners
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMeasuring) {
+      setMeasurePoints([]);
+      setTempMeasureMouse(null);
+      return;
+    }
+
+    const handleMeasureClick = (e: L.LeafletMouseEvent) => {
+      setMeasurePoints((prev) => [...prev, e.latlng]);
+    };
+
+    const handleMeasureMouseMove = (e: L.LeafletMouseEvent) => {
+      setTempMeasureMouse(e.latlng);
+    };
+
+    map.on("click", handleMeasureClick);
+    map.on("mousemove", handleMeasureMouseMove);
+
+    return () => {
+      map.off("click", handleMeasureClick);
+      map.off("mousemove", handleMeasureMouseMove);
+    };
+  }, [isMeasuring]);
+
+  // Distance Measurement Layer rendering on the map
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (measureLayersRef.current.polyline) {
+      map.removeLayer(measureLayersRef.current.polyline);
+      measureLayersRef.current.polyline = null;
+    }
+    if (measureLayersRef.current.tempPolyline) {
+      map.removeLayer(measureLayersRef.current.tempPolyline);
+      measureLayersRef.current.tempPolyline = null;
+    }
+    measureLayersRef.current.markers.forEach((m) => map.removeLayer(m));
+    measureLayersRef.current.markers = [];
+
+    if (!isMeasuring || measurePoints.length === 0) return;
+
+    const poly = L.polyline(measurePoints, {
+      color: "#ec4899",
+      weight: 3.5,
+      dashArray: "6, 12",
+      lineJoin: "round",
+    }).addTo(map);
+    measureLayersRef.current.polyline = poly;
+
+    if (tempMeasureMouse) {
+      const tempPoly = L.polyline([measurePoints[measurePoints.length - 1], tempMeasureMouse], {
+        color: "#f472b6",
+        weight: 2,
+        dashArray: "3, 6",
+        opacity: 0.8,
+      }).addTo(map);
+      measureLayersRef.current.tempPolyline = tempPoly;
+    }
+
+    let cumulative = 0;
+    measurePoints.forEach((pt, index) => {
+      let labelText = "";
+      if (index === 0) {
+        labelText = lang === "ar" ? "البداية" : "Départ";
+      } else {
+        const segDist = map.distance(measurePoints[index - 1], pt);
+        cumulative += segDist;
+        labelText = `+${segDist.toFixed(2)}m (${cumulative.toFixed(1)}m)`;
+      }
+
+      const marker = L.marker(pt, {
+        icon: L.divIcon({
+          className: "custom-measure-marker",
+          html: `
+            <div class="relative flex items-center justify-center">
+              <div class="w-3.5 h-3.5 rounded-full bg-pink-500 border-2 border-white shadow-md flex items-center justify-center">
+                <div class="w-1.5 h-1.5 bg-slate-950 rounded-full"></div>
+              </div>
+              <div class="absolute left-5 top-1/2 -translate-y-1/2 bg-slate-900/95 border border-pink-500 text-white font-mono text-[9.5px] font-bold px-2 py-0.5 rounded shadow-lg whitespace-nowrap z-[999] select-none">
+                ${labelText}
+              </div>
+            </div>
+          `,
+          iconSize: [14, 14],
+          iconAnchor: [7, 7],
+        }),
+      }).addTo(map);
+
+      measureLayersRef.current.markers.push(marker);
+    });
+  }, [isMeasuring, measurePoints, tempMeasureMouse, lang]);
+
+  // Go To Coordinate marker rendering on the map
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (gotoLayerRef.current) {
+      map.removeLayer(gotoLayerRef.current);
+      gotoLayerRef.current = null;
+    }
+
+    if (gotoMarkerLatLng) {
+      const marker = L.marker(gotoMarkerLatLng, {
+        icon: L.divIcon({
+          className: "custom-goto-marker",
+          html: `
+            <div class="relative flex items-center justify-center">
+              <div class="absolute w-10 h-10 rounded-full bg-amber-500/30 animate-ping"></div>
+              <div class="absolute w-5 h-5 rounded-full bg-amber-400/40 animate-pulse"></div>
+              <div class="w-4 h-4 rounded-full bg-amber-500 border-2 border-white shadow-2xl flex items-center justify-center z-10">
+                <div class="w-1.5 h-1.5 bg-slate-950 rounded-full"></div>
+              </div>
+              <div class="absolute top-5 bg-slate-900/95 border border-amber-500 text-amber-400 font-mono text-[9px] font-bold px-2 py-0.5 rounded shadow-lg whitespace-nowrap z-[1000] select-none flex items-center gap-1">
+                <span class="w-1 h-1 rounded-full bg-amber-400"></span>
+                <span>${lang === "ar" ? "الموقع المستهدف" : "Cible"}</span>
+              </div>
+            </div>
+          `,
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
+        }),
+      }).addTo(map);
+
+      gotoLayerRef.current = marker;
+    }
+  }, [gotoMarkerLatLng, lang]);
 
   // Hover Snapping: Shows a "+" button when the cursor is near any polygon segment
   useEffect(() => {
@@ -511,8 +689,8 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
             </div>
             <!-- Offset Label without background, plain high contrast text with a professional CAD text-shadow/halo -->
             <div 
-              style="transform: translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)); z-index: 100; text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0px 2px 3px rgba(0,0,0,0.95);"
-              class="absolute top-1/2 left-1/2 text-[10.5px] font-black font-mono text-yellow-300 whitespace-nowrap pointer-events-none tracking-wide"
+              style="transform: translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)); z-index: 100; text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0px 2px 3px rgba(0,0,0,0.95); font-size: ${settings.vertexFontSize !== undefined ? settings.vertexFontSize * 1.2 : 10.5}px;"
+              class="absolute top-1/2 left-1/2 font-black font-mono text-yellow-300 whitespace-nowrap pointer-events-none tracking-wide"
             >
               ${isDeleteMode ? `✕ ${v.label}` : v.label}
             </div>
@@ -590,10 +768,14 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     if (showLengths || showNeighbors) {
       parcel.segments.forEach((seg) => {
         const midPointCoords = getSegmentMidpoint(seg.startVertex, seg.endVertex);
-        const outsidePt = getOutsidePoint(centroidPlane, seg.startVertex, seg.endVertex, 6);
+        const mapOffset = settings.labelOffset !== undefined ? (settings.labelOffset * 6 / 7) : 6;
+        const outsidePt = getOutsidePoint(centroidPlane, seg.startVertex, seg.endVertex, mapOffset);
         const latlngLabel = planeToLatLng(outsidePt.x, outsidePt.y, activeCRS);
         const angle = getSegmentAngle(seg.startVertex, seg.endVertex);
         const isSelected = selectedSegmentId === seg.id;
+
+        const lengthSize = settings.labelFontSize !== undefined ? settings.labelFontSize * 1.4 : 10;
+        const neighborSize = settings.labelFontSize !== undefined ? settings.labelFontSize * 1.25 : 9;
 
         const labelHtml = `
           <div class="flex flex-col items-center justify-center cursor-pointer group transition-transform ${
@@ -601,7 +783,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
           }" style="transform: rotate(${-angle}deg)">
             ${
               showLengths
-                ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold shadow-sm select-none border whitespace-nowrap mb-0.5 ${
+                ? `<span style="font-size: ${lengthSize}px" class="px-1.5 py-0.5 rounded font-bold shadow-sm select-none border whitespace-nowrap mb-0.5 ${
                     isSelected
                       ? "bg-amber-500 text-white border-amber-600 scale-110"
                       : "bg-blue-50 text-blue-700 border-blue-200 group-hover:bg-blue-100"
@@ -612,7 +794,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
             }
             ${
               showNeighbors && seg.neighbor
-                ? `<span class="px-2 py-0.5 rounded text-[9px] font-medium shadow-sm select-none max-w-[100px] truncate block text-center ${
+                ? `<span style="font-size: ${neighborSize}px" class="px-2 py-0.5 rounded font-medium shadow-sm select-none max-w-[100px] truncate block text-center ${
                     isSelected
                       ? "bg-red-600 text-white font-bold"
                       : "bg-stone-800 text-white font-normal opacity-90 group-hover:opacity-100"
@@ -686,6 +868,69 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
       map.off("mouseout", handleMouseOutCoords);
     };
   }, [activeCRS, mapPreset]);
+
+  const getCumulativeDistance = () => {
+    if (!mapRef.current || measurePoints.length < 2) return 0;
+    let total = 0;
+    for (let i = 1; i < measurePoints.length; i++) {
+      total += mapRef.current.distance(measurePoints[i - 1], measurePoints[i]);
+    }
+    return total;
+  };
+
+  const handleExecuteGoto = () => {
+    setGotoError("");
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (gotoType === "lambert") {
+      const xVal = parseFloat(gotoX);
+      const yVal = parseFloat(gotoY);
+      if (isNaN(xVal) || isNaN(yVal)) {
+        setGotoError(lang === "ar" ? "الرجاء إدخال أرقام صحيحة لـ X و Y" : "Veuillez entrer des coordonnées X et Y valides");
+        return;
+      }
+
+      try {
+        const [lat, lng] = planeToLatLng(xVal, yVal, activeCRS);
+        if (isNaN(lat) || isNaN(lng) || !isFinite(lat) || !isFinite(lng)) {
+          setGotoError(lang === "ar" ? "فشل تحويل الإحداثيات المسطحة" : "Échec de conversion des coordonnées Lambert");
+          return;
+        }
+        const latlng = L.latLng(lat, lng);
+        setGotoMarkerLatLng(latlng);
+        map.flyTo(latlng, 19, { animate: true, duration: 1.5 });
+      } catch (err) {
+        setGotoError(lang === "ar" ? "خطأ في معالجة الإحداثيات" : "Erreur de traitement des coordonnées");
+      }
+    } else {
+      const latVal = parseFloat(gotoLat);
+      const lngVal = parseFloat(gotoLng);
+      if (isNaN(latVal) || isNaN(lngVal)) {
+        setGotoError(lang === "ar" ? "الرجاء إدخال قيم صحيحة لخط العرض والطول" : "Veuillez saisir des coordonnées géographiques valides");
+        return;
+      }
+      if (latVal < -90 || latVal > 90 || lngVal < -180 || lngVal > 180) {
+        setGotoError(lang === "ar" ? "قيم خطوط العرض والطول خارج النطاق المسموح به" : "Valeurs de latitude/longitude hors limites (-90 à 90 / -180 à 180)");
+        return;
+      }
+
+      const latlng = L.latLng(latVal, lngVal);
+      setGotoMarkerLatLng(latlng);
+      map.flyTo(latlng, 19, { animate: true, duration: 1.5 });
+    }
+  };
+
+  const handleUndoMeasure = () => {
+    if (measurePoints.length > 0) {
+      setMeasurePoints((prev) => prev.slice(0, -1));
+    }
+  };
+
+  const handleClearMeasure = () => {
+    setMeasurePoints([]);
+    setTempMeasureMouse(null);
+  };
 
   const crsDetails = CRS_DETAILS[activeCRS] || { name: activeCRS, arabic: activeCRS };
   const crsLabel = lang === "ar" ? crsDetails.arabic : crsDetails.name;
@@ -846,6 +1091,276 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
             <span>خريطة OSM</span>
           </button>
         </div>
+      </div>
+
+      {/* Unified Professional Dark UI CAD/GIS Utilities Panel (Floating Top-Right) */}
+      <div className="absolute top-4 right-4 z-20 flex flex-col items-end gap-3 max-w-[280px] pointer-events-none">
+        {/* Toggle buttons row */}
+        <div className="flex gap-2 pointer-events-auto">
+          {/* Go To Button */}
+          <button
+            onClick={() => {
+              setIsGotoOpen(!isGotoOpen);
+              if (isMeasuring) {
+                setIsMeasuring(false);
+                setMeasurePoints([]);
+                setTempMeasureMouse(null);
+              }
+            }}
+            className={`p-2 py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition hover:scale-105 active:scale-95 text-[10px] font-bold border ${
+              isGotoOpen
+                ? "bg-amber-600 border-amber-400 text-white shadow-lg shadow-amber-500/20"
+                : "bg-slate-900/95 border-slate-700/80 text-slate-200 hover:bg-slate-800"
+            }`}
+            title={lang === "ar" ? "الانتقال إلى إحداثيات محددة" : "Aller aux coordonnées"}
+          >
+            <Navigation className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span>{lang === "ar" ? "الانتقال السريع" : "Go To"}</span>
+          </button>
+
+          {/* Measure Button */}
+          <button
+            onClick={() => {
+              setIsMeasuring(!isMeasuring);
+              if (isGotoOpen) setIsGotoOpen(false);
+            }}
+            className={`p-2 py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition hover:scale-105 active:scale-95 text-[10px] font-bold border ${
+              isMeasuring
+                ? "bg-pink-600 border-pink-400 text-white shadow-lg shadow-pink-500/20"
+                : "bg-slate-900/95 border-slate-700/80 text-slate-200 hover:bg-slate-800"
+            }`}
+            title={lang === "ar" ? "قياس المسافات على الخريطة" : "Mesurer la distance"}
+          >
+            <Ruler className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+            <span>{lang === "ar" ? "قياس المسافة" : "Mesure"}</span>
+          </button>
+        </div>
+
+        {/* Go To Panel details */}
+        {isGotoOpen && (
+          <div className="bg-slate-900/95 border border-slate-700/80 rounded-xl p-3 shadow-2xl space-y-2.5 w-[260px] pointer-events-auto text-slate-100 font-sans">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5" />
+                {lang === "ar" ? "تحديد الموقع بالإحداثيات" : "Aller aux Coordonnées"}
+              </span>
+              <button 
+                onClick={() => setIsGotoOpen(false)}
+                className="text-slate-400 hover:text-slate-200 transition"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Coordinate system switcher */}
+            <div className="grid grid-cols-2 gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800/80">
+              <button
+                type="button"
+                onClick={() => {
+                  setGotoType("lambert");
+                  setGotoError("");
+                }}
+                className={`py-1 text-[9px] font-bold rounded-md transition ${
+                  gotoType === "lambert"
+                    ? "bg-slate-850 text-amber-400 shadow-sm"
+                    : "text-slate-400 hover:text-slate-300"
+                }`}
+              >
+                {lang === "ar" ? "لومبرت (X/Y)" : "Lambert (X/Y)"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGotoType("wgs84");
+                  setGotoError("");
+                }}
+                className={`py-1 text-[9px] font-bold rounded-md transition ${
+                  gotoType === "wgs84"
+                    ? "bg-slate-850 text-amber-400 shadow-sm"
+                    : "text-slate-400 hover:text-slate-300"
+                }`}
+              >
+                {lang === "ar" ? "جغرافي (Lat/Lng)" : "Géographique"}
+              </button>
+            </div>
+
+            {/* Form Fields */}
+            <div className="space-y-2 font-sans">
+              {gotoType === "lambert" ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[8px] uppercase tracking-wider font-semibold text-slate-400 font-mono block mb-1">
+                      X (Lambert m)
+                    </label>
+                    <input
+                      type="text"
+                      value={gotoX}
+                      onChange={(e) => setGotoX(e.target.value)}
+                      placeholder="362450"
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-100 focus:outline-none focus:border-amber-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[8px] uppercase tracking-wider font-semibold text-slate-400 font-mono block mb-1">
+                      Y (Lambert m)
+                    </label>
+                    <input
+                      type="text"
+                      value={gotoY}
+                      onChange={(e) => setGotoY(e.target.value)}
+                      placeholder="411830"
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-100 focus:outline-none focus:border-amber-500 font-mono"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[8px] uppercase tracking-wider font-semibold text-slate-400 font-mono block mb-1">
+                      Latitude (°)
+                    </label>
+                    <input
+                      type="text"
+                      value={gotoLat}
+                      onChange={(e) => setGotoLat(e.target.value)}
+                      placeholder="33.5731"
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-100 focus:outline-none focus:border-amber-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[8px] uppercase tracking-wider font-semibold text-slate-400 font-mono block mb-1">
+                      Longitude (°)
+                    </label>
+                    <input
+                      type="text"
+                      value={gotoLng}
+                      onChange={(e) => setGotoLng(e.target.value)}
+                      placeholder="-7.5898"
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-100 focus:outline-none focus:border-amber-500 font-mono"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {gotoError && (
+                <div className="bg-rose-950/85 border border-rose-800/80 text-[9px] text-rose-300 p-1.5 rounded font-medium">
+                  {gotoError}
+                </div>
+              )}
+
+              <div className="flex gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={handleExecuteGoto}
+                  className="flex-1 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-slate-950 font-extrabold text-[10px] py-1.5 rounded transition shadow-md flex items-center justify-center gap-1"
+                >
+                  <Navigation className="w-3 h-3 fill-slate-950 text-slate-950" />
+                  <span>{lang === "ar" ? "انتقال" : "Aller à"}</span>
+                </button>
+
+                {gotoMarkerLatLng && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGotoMarkerLatLng(null);
+                      setGotoError("");
+                    }}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-1.5 rounded transition"
+                    title={lang === "ar" ? "مسح علامة التحديد" : "Effacer le repère"}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Distance Measurement details */}
+        {isMeasuring && (
+          <div className="bg-slate-900/95 border border-slate-700/80 rounded-xl p-3 shadow-2xl space-y-2.5 w-[260px] pointer-events-auto text-slate-100 font-sans">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
+              <span className="text-[10px] font-bold text-pink-400 uppercase tracking-wider flex items-center gap-1.5 animate-pulse">
+                <Ruler className="w-3.5 h-3.5" />
+                {lang === "ar" ? "قياس المسافات" : "Mesure de Distance"}
+              </span>
+              <button 
+                onClick={() => {
+                  setIsMeasuring(false);
+                  setMeasurePoints([]);
+                  setTempMeasureMouse(null);
+                }}
+                className="text-slate-400 hover:text-slate-200 transition"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Instruction block */}
+            <div className="bg-slate-950 border border-slate-800/80 p-2 rounded text-[9px] leading-relaxed text-slate-300">
+              {measurePoints.length === 0 ? (
+                <span className="animate-pulse block text-pink-300">
+                  {lang === "ar"
+                    ? "ℹ️ انقر على أي موقع في الخريطة لوضع أول نقطة قياس."
+                    : "ℹ️ Cliquez sur la carte pour placer le premier point."}
+                </span>
+              ) : (
+                <span>
+                  {lang === "ar"
+                    ? `استمر بالنقر لتمديد القياس. تم تحديد ${measurePoints.length} نقطة.`
+                    : `Continuez à cliquer pour mesurer. ${measurePoints.length} points.`}
+                </span>
+              )}
+            </div>
+
+            {measurePoints.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center bg-slate-950/60 p-2 rounded border border-slate-800/50">
+                  <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">
+                    {lang === "ar" ? "المسافة الإجمالية" : "Distance Totale"}
+                  </span>
+                  <span className="text-xs font-black text-pink-400 font-mono">
+                    {getCumulativeDistance().toFixed(2)} m
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5 font-sans">
+                  <button
+                    type="button"
+                    onClick={handleUndoMeasure}
+                    disabled={measurePoints.length === 0}
+                    className="bg-slate-800 border border-slate-700 hover:bg-slate-700 disabled:opacity-40 text-slate-300 text-[9px] font-bold py-1.5 rounded transition flex items-center justify-center gap-1"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>{lang === "ar" ? "تراجع" : "Annuler"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearMeasure}
+                    disabled={measurePoints.length === 0}
+                    className="bg-pink-950 hover:bg-pink-900 border border-pink-800 text-pink-200 text-[9px] font-bold py-1.5 rounded transition flex items-center justify-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>{lang === "ar" ? "مسح الكل" : "Effacer tout"}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsMeasuring(false);
+                setMeasurePoints([]);
+                setTempMeasureMouse(null);
+              }}
+              className="w-full bg-slate-850 hover:bg-slate-800 hover:text-white text-slate-200 text-[9px] font-bold py-1.5 rounded transition flex items-center justify-center gap-1 border border-slate-700/60"
+            >
+              <Check className="w-3 h-3 text-emerald-400" />
+              <span>{lang === "ar" ? "إنهاء وإغلاق" : "Terminer"}</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Floating notifications for various states */}
