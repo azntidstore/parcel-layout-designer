@@ -1,5 +1,6 @@
 import React from "react";
 import { Youtube, ArrowLeft, Shield, Award, Sparkles, Compass, CheckCircle2, Globe, Heart } from "lucide-react";
+import { UserGuide } from "./UserGuide";
 
 interface AboutPageProps {
   onBack: () => void;
@@ -166,6 +167,11 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
             <span>for Morocco's Topography & GIS Community</span>
           </div>
         </div>
+      </div>
+
+      {/* Detailed interactive user guide section with optional external browser view */}
+      <div className="w-full mt-4">
+        <UserGuide lang={lang} />
       </div>
     </div>
   );

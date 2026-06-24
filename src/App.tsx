@@ -70,6 +70,7 @@ export default function App() {
   });
 
   const [viewMode, setViewMode] = useState<"map_editor" | "print_preview" | "about">("map_editor");
+  const [printLayoutType, setPrintLayoutType] = useState<"type1" | "type2">("type1");
 
   const [lang, setLang] = useState<"ar" | "fr">(() => {
     try {
@@ -777,10 +778,12 @@ export default function App() {
               <span>{t.editMapBtn}</span>
             </button>
             <button
-              onClick={() => setViewMode("print_preview")}
+              onClick={() => {
+                setViewMode("print_preview");
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
                 viewMode === "print_preview"
-                  ? "bg-amber-600 text-white shadow-md"
+                  ? "bg-amber-600 text-white shadow-md animate-none"
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
@@ -810,6 +813,7 @@ export default function App() {
           parcel={activeParcel}
           settings={settings}
           onBackToEditor={() => setViewMode("map_editor")}
+          initialLayoutType={printLayoutType}
         />
       ) : viewMode === "about" ? (
         <AboutPage

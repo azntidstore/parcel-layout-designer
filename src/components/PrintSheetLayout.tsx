@@ -220,13 +220,23 @@ interface PrintSheetLayoutProps {
   parcel: Parcel;
   settings: DocumentSettings;
   onBackToEditor: () => void;
+  initialLayoutType?: "type1" | "type2";
 }
 
 export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
   parcel,
   settings,
   onBackToEditor,
+  initialLayoutType = "type1",
 }) => {
+  const [printLayoutType, setPrintLayoutType] = useState<"type1" | "type2" | undefined>(initialLayoutType);
+
+  useEffect(() => {
+    if (initialLayoutType) {
+      setPrintLayoutType(initialLayoutType);
+    }
+  }, [initialLayoutType]);
+  
   // Local state overrides for editable grid interval & interactive scale
   const [localGridInterval, setLocalGridInterval] = useState(() => settings.gridInterval || 50);
   const [scaleMode, setScaleMode] = useState<"auto" | "100" | "250" | "500" | "1000" | "2500" | "5000" | "custom">(
@@ -284,8 +294,8 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
   const page2HeightMm = Math.max(210, physicalHeightMm + 70); // Expanded vertically to provide balanced visual breathing room around the parcel
 
   // Width and height details of the combined physical sheets
-  const totalWidthMm = 210 + page2WidthMm; // Page 1 Portrait (210) + Page 2 Variable (Landscape)
-  const maxPageHeightMm = Math.max(297, page2HeightMm); // Match tallest of standard A4 Portrait or dynamic Page 2
+  const totalWidthMm = printLayoutType === "type2" ? page2WidthMm : 210 + page2WidthMm; // Page 1 Portrait (210) + Page 2 Variable (Landscape)
+  const maxPageHeightMm = printLayoutType === "type2" ? page2HeightMm : Math.max(297, page2HeightMm); // Match tallest of standard A4 Portrait or dynamic Page 2
 
   // 3. Definitive Dynamic SVG Coordinates matching 100% of physical page aspect ratio
   const svgWidth = page2WidthMm * 2.5;
@@ -309,7 +319,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
   // Perfectly symmetric inner boundaries to center the coordinate grid/grille harmoniously
   const mapLeft = 28;
   const mapRight = svgWidth - (containerWidthMm * 2.5 + 28); // Shuffled left dynamically to leave exact space for Coordinates Table
-  const mapTop = 16;
+  const mapTop = printLayoutType === "type2" ? 45 : 16;
   const mapBottom = svgHeight - 28;
   
   const mapWidth = mapRight - mapLeft;
@@ -581,30 +591,40 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
             // 2. Process combined CSS to replace oklch, oklab, lab, lch with compatible RGB values
             const cleanCss = replaceModernColorsInCss(combinedCss);
 
-            // 3. Remove original same-origin style/link nodes in clonedDoc to avoid conflicts/double loads/crashes
-            sheetsToRemoveFromClone.forEach((selector) => {
+            // 3. Remove all existing style/link tags except Google fonts to guarantee no unparsed oklch remains
+            clonedDoc.querySelectorAll("style, link[rel='stylesheet']").forEach((el) => {
               try {
-                clonedDoc.querySelectorAll(selector).forEach((el) => {
-                  el.parentNode?.removeChild(el);
-                });
+                if (el.nodeName.toLowerCase() === "link") {
+                  const href = (el as HTMLLinkElement).getAttribute("href") || "";
+                  if (href.includes("fonts.googleapis.com") || href.includes("fonts.gstatic.com")) {
+                    return; // Keep Google fonts
+                  }
+                }
+                el.parentNode?.removeChild(el);
               } catch (e) {
-                console.warn("Failed to clean element from clone:", selector, e);
+                console.warn("Failed to remove style/link element from clone:", e);
               }
             });
 
-            // Search clonedDoc directly for any other inline <style> tags and clean them just to be absolutely sure
-            clonedDoc.querySelectorAll("style").forEach((styleEl) => {
-              if (styleEl.textContent && (
-                styleEl.textContent.includes("oklch") || 
-                styleEl.textContent.includes("oklab") || 
-                styleEl.textContent.includes("lch") || 
-                styleEl.textContent.includes("lab")
-              )) {
-                styleEl.textContent = replaceModernColorsInCss(styleEl.textContent);
+            // Clean any inline style attributes in the cloned document that might contain oklch/oklab/lch/lab
+            clonedDoc.querySelectorAll("[style]").forEach((el) => {
+              try {
+                const htmlEl = el as HTMLElement;
+                const styleAttr = htmlEl.getAttribute("style");
+                if (styleAttr && (
+                  styleAttr.includes("oklch") || 
+                  styleAttr.includes("oklab") || 
+                  styleAttr.includes("lch") || 
+                  styleAttr.includes("lab")
+                )) {
+                  htmlEl.setAttribute("style", replaceModernColorsInCss(styleAttr));
+                }
+              } catch (e) {
+                // Ignore
               }
             });
 
-            // 4. Inject clean unified CSS as a single <style> element
+            // 4. Inject clean unified CSS as a single <style> element containing resolved Colors
             const newStyle = clonedDoc.createElement("style");
             newStyle.textContent = cleanCss;
             clonedDoc.head.appendChild(newStyle);
@@ -884,13 +904,43 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
             <Printer className="w-5 h-5 animate-pulse" />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-slate-800">Visualisation du Dossier d'Impression</h1>
+            <h1 className="text-sm font-bold text-slate-800">
+              {printLayoutType === "type1" ? "Visualisation du Dossier d'Impression (طباعة 1)" : "Visualisation du Plan Parcellaire (طباعة 2)"}
+            </h1>
             <p className="text-[11px] text-slate-500">
-              Page 1 de garde (A4 Vertical/Portrait) et Page 2 plan de détails (variable)
+              {printLayoutType === "type1" 
+                ? "Page 1 de garde (A4 Vertical/Portrait) et Page 2 plan de détails (variable)"
+                : "Page unique du plan parcellaire (horizontal avec titre PLAN PARCELLAIRE)"}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 items-center justify-end w-full lg:w-auto">
+          {/* Layout Type Fast Switcher */}
+          <div className="flex bg-stone-100 p-1 rounded-lg border border-stone-200 text-xs font-bold leading-none shrink-0 print:hidden select-none mr-2">
+            <button
+              onClick={() => setPrintLayoutType("type1")}
+              className={`px-3 py-1.5 rounded-md transition-all ${
+                printLayoutType === "type1" 
+                  ? "bg-amber-600 text-white shadow-sm" 
+                  : "text-stone-500 hover:text-stone-850"
+              }`}
+              title="Page de Garde + Page de Détails"
+            >
+              الملف التقني (طباعة 1)
+            </button>
+            <button
+              onClick={() => setPrintLayoutType("type2")}
+              className={`px-3 py-1.5 rounded-md transition-all ${
+                printLayoutType === "type2" 
+                  ? "bg-amber-600 text-white shadow-sm animate-none" 
+                  : "text-stone-500 hover:text-stone-850"
+              }`}
+              title="Plan Parcellaire Seul"
+            >
+              الملف التقني (طباعة 2)
+            </button>
+          </div>
+
           {/* Editable Grid Interval */}
           <div className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-stone-600 shrink-0">
             <span className="text-[10px] text-stone-500 font-extrabold uppercase">Grille (m) :</span>
@@ -1107,20 +1157,21 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
             {/* ========================================================= */}
             {/* PAGE 1 (Left Side): Page De Garde - Fixed A4 Portrait */}
             {/* ========================================================= */}
-            <div
-              id="page-1-cover"
-              className="border-[5px] border-double border-stone-800 p-6 flex flex-col justify-between bg-white print:border-[5px] print:border-double print:border-stone-800 print:m-0 print:static shrink-0 font-sans"
-              style={{
-                width: "210mm",
-                height: "297mm",
-                minHeight: "297mm",
-                maxHeight: "297mm",
-                pageBreakAfter: "avoid",
-                breakAfter: "avoid",
-                pageBreakBefore: "avoid",
-                breakBefore: "avoid",
-              }}
-            >
+            {printLayoutType === "type1" && (
+              <div
+                id="page-1-cover"
+                className="border-[5px] border-double border-stone-800 p-6 flex flex-col justify-between bg-white print:border-[5px] print:border-double print:border-stone-800 print:m-0 print:static shrink-0 font-sans"
+                style={{
+                  width: "210mm",
+                  height: "297mm",
+                  minHeight: "297mm",
+                  maxHeight: "297mm",
+                  pageBreakAfter: "avoid",
+                  breakAfter: "avoid",
+                  pageBreakBefore: "avoid",
+                  breakBefore: "avoid",
+                }}
+              >
               {/* UPPER HALF: Rich Official Property Data Hub (Enlarged and balanced) */}
               <div className="flex flex-col justify-between h-[126mm] max-h-[126mm] min-h-[126mm] pb-2">
                 {/* Top Row: Arabic Title Right, French Left, Logo in center */}
@@ -1297,6 +1348,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                 )}
               </div>
             </div>
+          )}
 
           {/* ========================================================= */}
           {/* PAGE 2 (Right Side): Modèle Technique - Variable Maps/Tables */}
@@ -1398,6 +1450,33 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                 viewBox={`0 0 ${svgWidth} ${svgHeight}`}
                 className="text-stone-800 z-10 w-full h-full"
               >
+                {/* Custom Title Card for Plan Parcellaire (printLayoutType === "type2") */}
+                {printLayoutType === "type2" && (
+                  <g id="type2-header-title">
+                    {/* Header Box background */}
+                    <rect
+                      x={mapLeft}
+                      y={8}
+                      width={mapWidth}
+                      height={27}
+                      fill="#fcfbf7"
+                      stroke="#1c1917"
+                      strokeWidth="1.5"
+                      rx="3"
+                    />
+                    {/* Centered PLAN PARCELLAIRE title */}
+                    <text
+                      x={mapLeft + mapWidth / 2}
+                      y={26}
+                      textAnchor="middle"
+                      className="font-sans font-black tracking-widest fill-stone-900"
+                      style={{ fontSize: "14px", fontWeight: 900, letterSpacing: "0.15em" }}
+                    >
+                      PLAN PARCELLAIRE
+                    </text>
+                  </g>
+                )}
+
                 {/* Elegant Inner Map Border Cadre */}
                 <rect
                   x={mapLeft}
@@ -1408,6 +1487,33 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                   stroke="#1c1917"
                   strokeWidth="1.5"
                 />
+
+                {/* Custom Surface badge inside the map near the bottom frame (printLayoutType === "type2") */}
+                {printLayoutType === "type2" && (
+                  <g id="type2-surface-badge">
+                    {/* Background rectangle for legibility */}
+                    <rect
+                      x={mapLeft + mapWidth / 2 - 140}
+                      y={mapBottom - 26}
+                      width={280}
+                      height={18}
+                      fill="#fcfbf7"
+                      stroke="#1c1917"
+                      strokeWidth="1.2"
+                      rx="2"
+                    />
+                    {/* Bilingual Surface Display with requested format */}
+                    <text
+                      x={mapLeft + mapWidth / 2}
+                      y={mapBottom - 13}
+                      textAnchor="middle"
+                      className="font-sans font-extrabold fill-stone-900"
+                      style={{ fontSize: "10px", fontWeight: 850 }}
+                    >
+                      {`SURFACE : ${Math.floor(parcel.area / 10000)} H . ${Math.floor((parcel.area % 10000) / 100)} A . ${(parcel.area % 100).toFixed(2)} Ca`}
+                    </text>
+                  </g>
+                )}
 
                 {/* Horizontal grid lines and bottom tick labels (X constant lines) */}
                 {gridTicksX.map((gx, idx) => {
