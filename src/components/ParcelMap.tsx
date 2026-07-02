@@ -339,9 +339,13 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     measureLayersRef.current.markers.forEach((m) => map.removeLayer(m));
     measureLayersRef.current.markers = [];
 
-    if (!isMeasuring || measurePoints.length === 0) return;
+    const validMeasurePoints = measurePoints.filter(
+      (pt) => pt && typeof pt.lat === "number" && !isNaN(pt.lat) && typeof pt.lng === "number" && !isNaN(pt.lng)
+    );
 
-    const poly = L.polyline(measurePoints, {
+    if (!isMeasuring || validMeasurePoints.length === 0) return;
+
+    const poly = L.polyline(validMeasurePoints, {
       color: "#ec4899",
       weight: 3.5,
       dashArray: "6, 12",
@@ -349,23 +353,32 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     }).addTo(map);
     measureLayersRef.current.polyline = poly;
 
-    if (tempMeasureMouse) {
-      const tempPoly = L.polyline([measurePoints[measurePoints.length - 1], tempMeasureMouse], {
-        color: "#f472b6",
-        weight: 2,
-        dashArray: "3, 6",
-        opacity: 0.8,
-      }).addTo(map);
-      measureLayersRef.current.tempPolyline = tempPoly;
+    if (
+      tempMeasureMouse &&
+      typeof tempMeasureMouse.lat === "number" &&
+      !isNaN(tempMeasureMouse.lat) &&
+      typeof tempMeasureMouse.lng === "number" &&
+      !isNaN(tempMeasureMouse.lng)
+    ) {
+      const lastPt = validMeasurePoints[validMeasurePoints.length - 1];
+      if (lastPt) {
+        const tempPoly = L.polyline([lastPt, tempMeasureMouse], {
+          color: "#f472b6",
+          weight: 2,
+          dashArray: "3, 6",
+          opacity: 0.8,
+        }).addTo(map);
+        measureLayersRef.current.tempPolyline = tempPoly;
+      }
     }
 
     let cumulative = 0;
-    measurePoints.forEach((pt, index) => {
+    validMeasurePoints.forEach((pt, index) => {
       let labelText = "";
       if (index === 0) {
         labelText = lang === "ar" ? "البداية" : "Départ";
       } else {
-        const segDist = map.distance(measurePoints[index - 1], pt);
+        const segDist = map.distance(validMeasurePoints[index - 1], pt);
         cumulative += segDist;
         labelText = `+${segDist.toFixed(2)}m (${cumulative.toFixed(1)}m)`;
       }
@@ -480,23 +493,39 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
         const pt1 = map.latLngToContainerPoint(ll1);
         const pt2 = map.latLngToContainerPoint(ll2);
 
+        if (
+          isNaN(pt1.x) || isNaN(pt1.y) || !isFinite(pt1.x) || !isFinite(pt1.y) ||
+          isNaN(pt2.x) || isNaN(pt2.y) || !isFinite(pt2.x) || !isFinite(pt2.y)
+        ) {
+          continue;
+        }
+
         const dx = pt2.x - pt1.x;
         const dy = pt2.y - pt1.y;
         const lenSq = dx * dx + dy * dy;
-        if (lenSq === 0) continue;
+        if (lenSq === 0 || isNaN(lenSq)) continue;
 
         let t = ((mousePt.x - pt1.x) * dx + (mousePt.y - pt1.y) * dy) / lenSq;
         t = Math.max(0, Math.min(1, t));
+        if (isNaN(t)) continue;
 
         const projX = pt1.x + t * dx;
         const projY = pt1.y + t * dy;
 
+        if (isNaN(projX) || isNaN(projY) || !isFinite(projX) || !isFinite(projY)) {
+          continue;
+        }
+
         const dist = Math.hypot(mousePt.x - projX, mousePt.y - projY);
+        if (isNaN(dist)) continue;
 
         if (dist < minDist) {
-          minDist = dist;
-          closestLatLng = map.containerPointToLatLng(L.point(projX, projY));
-          closestInsertIndex = i + 1; // Insert right after the first vertex of the segment
+          const latlng = map.containerPointToLatLng(L.point(projX, projY));
+          if (latlng && !isNaN(latlng.lat) && !isNaN(latlng.lng)) {
+            minDist = dist;
+            closestLatLng = latlng;
+            closestInsertIndex = i + 1; // Insert right after the first vertex of the segment
+          }
         }
       }
 

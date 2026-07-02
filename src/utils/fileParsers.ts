@@ -63,6 +63,7 @@ export function convertGeoJSONToParsedFeatures(geojson: any, fallbackName: strin
     const properties = feat.properties || {};
     const attributes: Record<string, string> = {};
     Object.keys(properties).forEach((k) => {
+      if (k === "__proto__" || k === "constructor" || k === "prototype") return;
       attributes[k] = properties[k] !== null && properties[k] !== undefined ? String(properties[k]).trim() : "";
     });
 
@@ -836,7 +837,8 @@ export function parseGeoJSON(text: string): ParsedFeature[] {
 export async function parseShapefileZip(buffer: ArrayBuffer): Promise<ParsedFeature[]> {
   try {
     const zip = await JSZip.loadAsync(buffer);
-    
+
+
     // Find files ending with .shp and .dbf
     const shpFileEntry = Object.values(zip.files).find((f) => f.name.toLowerCase().endsWith(".shp"));
     const dbfFileEntry = Object.values(zip.files).find((f) => f.name.toLowerCase().endsWith(".dbf"));
@@ -1260,6 +1262,7 @@ export function parseTabularData(rows: any[][], fileName: string): ParsedFeature
       const colHeader = (headerIndex !== -1 && headerIndex < cleanRows.length && cleanRows[headerIndex][cIdx] !== undefined)
         ? String(cleanRows[headerIndex][cIdx]).trim()
         : `Col_${cIdx + 1}`;
+      if (colHeader === "__proto__" || colHeader === "constructor" || colHeader === "prototype") return;
       attrs[colHeader] = cell !== null && cell !== undefined ? String(cell).trim() : "";
     });
 
@@ -1958,3 +1961,5 @@ export function parseGeoPackage(buffer: ArrayBuffer): ParsedFeature[] {
   
   return features;
 }
+
+

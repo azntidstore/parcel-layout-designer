@@ -464,7 +464,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
 
     let adjustZoomTimer: any = null;
 
-    if (fallbackFit) {
+    if (fallbackFit && bounds.isValid()) {
       // Fit boundary then zoom out slightly (zoom scale-out to show neighborhood context)
       map.fitBounds(bounds, { padding: [15, 15] });
       

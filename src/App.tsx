@@ -17,6 +17,8 @@ import {
   parseCSV,
   parseExcel,
   parseGeoPackage,
+  parseShapefileZip,
+  parseShapefilePair,
 } from "./utils/fileParsers";
 import { translations } from "./utils/translations";
 import {
@@ -106,6 +108,9 @@ export default function App() {
 
   // Dynamic tabular attribute naming mapping state
   const [selectedAttributeKey, setSelectedAttributeKey] = useState<string>("");
+
+  // Search query for filtering large list of imported parcels
+  const [importSearchQuery, setImportSearchQuery] = useState<string>("");
 
   // Clean reset of selected columns when switcher triggers
   React.useEffect(() => {
@@ -514,6 +519,34 @@ export default function App() {
 
     const files: File[] = Array.from(fileList);
 
+    // SECURITY: Input validation & Size checking (Max 15MB per file to prevent Browser crash / DoS)
+    const MAX_FILE_SIZE_MB = 15;
+    const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+    const SUPPORTED_EXTENSIONS = [
+      ".geojson", ".json", ".csv", ".xls", ".xlsx", ".dxf", ".gpkg", ".zip", ".shp", ".dbf", ".gpx", ".kml"
+    ];
+
+    for (const file of files) {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        alert(
+          lang === "ar"
+            ? `⚠️ حجم الملف "${file.name}" كبير جداً. الحد الأقصى المسموح به هو ${MAX_FILE_SIZE_MB} ميغابايت.`
+            : `⚠️ Le fichier "${file.name}" est trop volumineux. La limite maximale autorisée est de ${MAX_FILE_SIZE_MB} Mo.`
+        );
+        return;
+      }
+
+      const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+      if (!SUPPORTED_EXTENSIONS.includes(ext)) {
+        alert(
+          lang === "ar"
+            ? `⚠️ صيغة الملف غير مدعومة لـ "${file.name}".`
+            : `⚠️ Le format du fichier "${file.name}" n'est pas pris en charge.`
+        );
+        return;
+      }
+    }
+
     const processFeatures = (
       features: ParsedFeature[],
       formatName: string,
@@ -616,6 +649,7 @@ export default function App() {
       setParcels((prev) => [...prev, ...newParcels]);
       setSelectedParcelId(newParcels[0].id);
       setSelectedAttributeKey(""); // Reset column mapping selection
+      setImportSearchQuery(""); // Reset search query on new import
 
       setImportNotification({
         fileName: originFileName,
@@ -629,7 +663,50 @@ export default function App() {
     };
 
     try {
-      // Scenario D: Any other individual file (GeoJSON, KML, DXF, CSV, Excel)
+      const shpFile = files.find(f => f.name.toLowerCase().endsWith(".shp"));
+      const dbfFile = files.find(f => f.name.toLowerCase().endsWith(".dbf"));
+      const zipFile = files.find(f => f.name.toLowerCase().endsWith(".zip"));
+
+      // Scenario A: Zipped Shapefile / ZIP containing map files
+      if (zipFile) {
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          try {
+            const buffer = event.target?.result as ArrayBuffer;
+            const parsed = await parseShapefileZip(buffer);
+            processFeatures(parsed, "Zipped Shapefile (.zip)", zipFile.name);
+          } catch (err) {
+            console.error(err);
+            alert("Erreur: Impossible d'analyser le fichier ZIP.");
+          }
+        };
+        reader.readAsArrayBuffer(zipFile);
+        return;
+      }
+
+      // Scenario B: Individual .shp + .dbf selected together
+      if (shpFile && dbfFile) {
+        const shpReader = new FileReader();
+        shpReader.onload = (shpEvent) => {
+          const shpBuffer = shpEvent.target?.result as ArrayBuffer;
+          const dbfReader = new FileReader();
+          dbfReader.onload = async (dbfEvent) => {
+            const dbfBuffer = dbfEvent.target?.result as ArrayBuffer;
+            try {
+              const parsed = await parseShapefilePair(shpBuffer, dbfBuffer);
+              processFeatures(parsed, "Shapefile (.shp + .dbf)", shpFile.name);
+            } catch (err) {
+              console.error(err);
+              alert("Erreur: Impossible d'analyser la paire de fichiers Shapefile (.shp + .dbf).");
+            }
+          };
+          dbfReader.readAsArrayBuffer(dbfFile);
+        };
+        shpReader.readAsArrayBuffer(shpFile);
+        return;
+      }
+
+      // Scenario E: Other individual files
       const primaryFile = files[0];
       if (primaryFile) {
         const extension = primaryFile.name.substring(primaryFile.name.lastIndexOf(".")).toLowerCase();
@@ -677,7 +754,6 @@ export default function App() {
             } else {
               const parsed = parseGeoJSON(content);
 
-              // Let us search if there is a CRS EPSG code inside GeoJSON
               let geojsonCRS: SupportedCRS | undefined;
               try {
                 const rawObj = JSON.parse(content);
@@ -889,7 +965,7 @@ export default function App() {
               <p className="text-[10px] text-slate-400 leading-relaxed">
                 Importation de levés topographiques multi-formats :
                 <span className="block mt-1 text-[9.5px] font-mono text-emerald-400 font-bold">
-                  • DXF • GEOPACKAGE (.gpkg) • GeoJSON • CSV • EXCEL (.xlsx/.xls)
+                  • DXF • GEOPACKAGE (.gpkg) • GeoJSON • CSV • EXCEL (.xlsx/.xls) • SHAPEFILE (.zip/.shp)
                 </span>
               </p>
               <div
@@ -898,7 +974,7 @@ export default function App() {
               >
                 <Upload className="w-5 h-5 text-slate-500 group-hover:text-emerald-500 transition" />
                 <span className="text-[10.5px] font-medium text-slate-300">Choisir un fichier d'arpentage</span>
-                <span className="text-[8px] text-slate-500 font-mono">Glisser DXF, CSV, EXCEL, GPKG ou GeoJSON</span>
+                <span className="text-[8px] text-slate-500 font-mono">Glisser DXF, CSV, EXCEL, GPKG, GeoJSON, SHP, DBF, ou ZIP</span>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -981,33 +1057,101 @@ export default function App() {
 
                   {/* 3. LIST OF PROPERTIES */}
                   <div className="border-t border-slate-800/80 pt-2 flex flex-col gap-1.5 mt-0.5">
-                    <span className="text-[9.5px] text-emerald-400 font-bold block mb-1 font-sans">
-                      {lang === "ar" ? "لائحة الأملاك المكونة للملــــف :" : "Liste des parcelles composant le dossier :"}
-                    </span>
-                    <div className="max-h-36 overflow-y-auto flex flex-col gap-1 pr-1 font-sans bg-slate-950/60 p-1.5 rounded border border-slate-850">
-                      {importNotification.parcelIds.map((pId) => {
-                        const matchP = parcels.find(p => p.id === pId);
-                        if (!matchP) return null;
-                        const isActive = selectedParcelId === pId;
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-[9.5px] text-emerald-400 font-bold block font-sans animate-pulse">
+                        {lang === "ar" ? "لائحة الأملاك المكونة للملــــف :" : "Liste des parcelles composant le dossier :"}
+                      </span>
+                      {importNotification.parcelIds.length > 5 && (
+                        <span className="text-[8.5px] font-mono text-slate-400 font-bold bg-slate-900/80 px-1.5 py-0.5 rounded border border-slate-800/60">
+                          {importNotification.parcelIds.length} {lang === "ar" ? "مضلعات" : "polygones"}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Highly interactive search & filter tool */}
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder={lang === "ar" ? "🔍 ابحث باسم أو رقم الملك أو القمم..." : "🔍 Rechercher par nom, attribut..."}
+                        value={importSearchQuery}
+                        onChange={(e) => setImportSearchQuery(e.target.value)}
+                        className={`w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all font-sans ${
+                          lang === "ar" ? "text-right" : "text-left"
+                        }`}
+                      />
+                      {importSearchQuery && (
+                        <button
+                          onClick={() => setImportSearchQuery("")}
+                          className={`absolute text-slate-500 hover:text-slate-300 transition text-[10px] px-1 font-sans top-1/2 -translate-y-1/2 ${
+                            lang === "ar" ? "left-2.5" : "right-2.5"
+                          }`}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    {/* List of properties filtered */}
+                    <div className="max-h-40 overflow-y-auto flex flex-col gap-1 pr-1 font-sans bg-slate-950/60 p-1.5 rounded border border-slate-850">
+                      {(() => {
+                        const filteredIds = importNotification.parcelIds.filter((pId) => {
+                          const matchP = parcels.find((p) => p.id === pId);
+                          if (!matchP) return false;
+                          if (!importSearchQuery.trim()) return true;
+                          const q = importSearchQuery.toLowerCase();
+                          const matchesName = matchP.name.toLowerCase().includes(q);
+                          const matchesAttrs = matchP.attributes && Object.values(matchP.attributes).some(
+                            (val) => String(val).toLowerCase().includes(q)
+                          );
+                          return matchesName || matchesAttrs;
+                        });
+
+                        if (filteredIds.length === 0) {
+                          return (
+                            <div className="text-center py-4 text-slate-500 text-[10.5px] font-sans">
+                              {lang === "ar" ? "⚠️ لا توجد نتائج مطابقة لبحثك" : "⚠️ Aucun résultat correspondant"}
+                            </div>
+                          );
+                        }
+
                         return (
-                          <button
-                            key={pId}
-                            onClick={() => {
-                              setSelectedParcelId(pId);
-                            }}
-                            className={`w-full text-left px-2 py-1.5 rounded-md text-[10.5px] font-medium transition flex items-start justify-between min-h-[36px] ${
-                              isActive 
-                                ? "bg-amber-600 text-white font-bold" 
-                                : "bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800/40"
-                            }`}
-                          >
-                            <span className="font-medium text-[10.5px] break-words whitespace-normal text-left flex-1 mr-2">{matchP.name}</span>
-                            <span className="text-[8.5px] font-mono opacity-80 shrink-0 font-bold bg-slate-950/40 px-1.5 py-0.5 rounded text-emerald-400 mt-0.5 font-sans">
-                              {lang === "ar" ? `${matchP.vertices.length} قمم` : `${matchP.vertices.length} Bornes`}
-                            </span>
-                          </button>
+                          <>
+                            {importSearchQuery.trim() && (
+                              <div className="text-[8.5px] text-amber-400 font-mono mb-1 border-b border-slate-800 pb-1 flex justify-between px-1">
+                                <span>{lang === "ar" ? "نتائج البحث :" : "Résultats :"}</span>
+                                <span>
+                                  {filteredIds.length} / {importNotification.parcelIds.length}
+                                </span>
+                              </div>
+                            )}
+                            {filteredIds.map((pId) => {
+                              const matchP = parcels.find(p => p.id === pId);
+                              if (!matchP) return null;
+                              const isActive = selectedParcelId === pId;
+                              return (
+                                <button
+                                  key={pId}
+                                  onClick={() => {
+                                    setSelectedParcelId(pId);
+                                  }}
+                                  className={`w-full text-left px-2.5 py-1.5 rounded transition flex items-start justify-between min-h-[36px] border ${
+                                    isActive 
+                                      ? "bg-emerald-600/20 text-emerald-300 border-emerald-500/60 font-bold" 
+                                      : "bg-slate-900/60 hover:bg-slate-800 text-slate-300 border-slate-800/40"
+                                  }`}
+                                >
+                                  <span className={`font-semibold text-[10.5px] break-words whitespace-normal flex-1 mr-2 ${lang === "ar" ? "text-right" : "text-left"}`}>
+                                    {matchP.name}
+                                  </span>
+                                  <span className="text-[8.5px] font-mono opacity-80 shrink-0 font-bold bg-slate-950/40 px-1.5 py-0.5 rounded text-emerald-400 mt-0.5 font-sans">
+                                    {lang === "ar" ? `${matchP.vertices.length} قمم` : `${matchP.vertices.length} Bornes`}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </>
                         );
-                      })}
+                      })()}
                     </div>
                   </div>
                 </div>
