@@ -40,6 +40,29 @@ function createParcel(
 
 export const sampleParcels: Parcel[] = [
   createParcel(
+    "parcelle-par-defaut",
+    "المضلع الافتراضي (EPSG:26191)",
+    [
+      { x: 397802.07, y: 197955.56 },
+      { x: 397751.30, y: 197635.59 },
+      { x: 396966.90, y: 197636.75 },
+      { x: 397029.33, y: 197956.59 },
+    ],
+    {
+      1: "Propriété privée (Côté Est)",
+      2: "Limite Sud / Piste",
+      3: "Propriété Consorts Alami",
+      4: "Voie publique d'aménagement",
+    },
+    {
+      ID: "DEF-26191",
+      Nom: "المضلع الافتراضي (EPSG:26191)",
+      Titre: "Default EPSG:26191",
+      Zone: "Zone Nord Maroc",
+      CRS: "EPSG:26191"
+    }
+  ),
+  createParcel(
     "titre-almarj",
     "Titre Foncier N° 98124/H (Al-Marj)",
     [

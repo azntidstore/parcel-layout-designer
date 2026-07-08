@@ -56,7 +56,16 @@ export default function App() {
   const [parcels, setParcels] = useState<Parcel[]>(() => {
     try {
       const saved = localStorage.getItem("cadastral_parcels");
-      return saved ? JSON.parse(saved) : sampleParcels;
+      const loaded = saved ? JSON.parse(saved) : sampleParcels;
+      // Guarantee that our new default parcel with the requested coordinates is present in the list
+      const hasDefault = Array.isArray(loaded) && loaded.some((p: any) => p.id === "parcelle-par-defaut");
+      if (!hasDefault) {
+        const defaultParcel = sampleParcels.find(p => p.id === "parcelle-par-defaut");
+        if (defaultParcel) {
+          return [defaultParcel, ...loaded];
+        }
+      }
+      return loaded;
     } catch (_) {
       return sampleParcels;
     }
@@ -65,9 +74,13 @@ export default function App() {
   const [selectedParcelId, setSelectedParcelId] = useState<string>(() => {
     try {
       const saved = localStorage.getItem("cadastral_selected_parcel_id");
-      return saved || "titre-almarj";
+      // Change the default start-up selected parcel to our new default parcel
+      if (!saved || saved === "titre-almarj") {
+        return "parcelle-par-defaut";
+      }
+      return saved;
     } catch (_) {
-      return "titre-almarj";
+      return "parcelle-par-defaut";
     }
   });
 
@@ -145,6 +158,10 @@ export default function App() {
       const saved = localStorage.getItem("cadastral_settings");
       if (saved) {
         const parsed = JSON.parse(saved);
+        const savedParcelId = localStorage.getItem("cadastral_selected_parcel_id");
+        if (!savedParcelId || savedParcelId === "parcelle-par-defaut") {
+          parsed.projectionSystem = "EPSG:26191";
+        }
         if (!parsed.dossierNumber) {
           parsed.dossierNumber = "2026/...";
         }
