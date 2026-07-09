@@ -57,12 +57,19 @@ export default function App() {
     try {
       const saved = localStorage.getItem("cadastral_parcels");
       const loaded = saved ? JSON.parse(saved) : sampleParcels;
-      // Guarantee that our new default parcel with the requested coordinates is present in the list
-      const hasDefault = Array.isArray(loaded) && loaded.some((p: any) => p.id === "parcelle-par-defaut");
-      if (!hasDefault) {
-        const defaultParcel = sampleParcels.find(p => p.id === "parcelle-par-defaut");
-        if (defaultParcel) {
-          return [defaultParcel, ...loaded];
+      
+      const defaultParcel = sampleParcels.find(p => p.id === "parcelle-par-defaut");
+      if (Array.isArray(loaded)) {
+        const index = loaded.findIndex((p: any) => p.id === "parcelle-par-defaut");
+        if (index !== -1) {
+          // Force update the default parcel so the new neighbor names and coordinates are applied immediately
+          if (defaultParcel) {
+            loaded[index] = defaultParcel;
+          }
+        } else {
+          if (defaultParcel) {
+            loaded.unshift(defaultParcel);
+          }
         }
       }
       return loaded;

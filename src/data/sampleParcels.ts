@@ -49,10 +49,10 @@ export const sampleParcels: Parcel[] = [
       { x: 397029.33, y: 197956.59 },
     ],
     {
-      1: "Propriété privée (Côté Est)",
-      2: "Limite Sud / Piste",
-      3: "Propriété Consorts Alami",
-      4: "Voie publique d'aménagement",
+      1: "abdellah ben ali",
+      2: "hassan ouazzani",
+      3: "fatna takkal",
+      4: "ahmed zidane",
     },
     {
       ID: "DEF-26191",
