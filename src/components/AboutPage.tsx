@@ -1,6 +1,28 @@
-import React from "react";
-import { Youtube, ArrowLeft, Shield, Award, Sparkles, Compass, CheckCircle2, Globe, Heart } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { 
+  Youtube, 
+  ArrowLeft, 
+  Shield, 
+  Award, 
+  Sparkles, 
+  Compass, 
+  CheckCircle2, 
+  Globe, 
+  Heart,
+  BarChart3,
+  Smartphone,
+  Monitor,
+  Tablet,
+  MapPin,
+  TrendingUp,
+  Unlock,
+  Lock,
+  RefreshCw,
+  Users,
+  Check
+} from "lucide-react";
 import { UserGuide } from "./UserGuide";
+import { SecretStatsPanel } from "./SecretStatsPanel";
 
 interface AboutPageProps {
   onBack: () => void;
@@ -9,6 +31,90 @@ interface AboutPageProps {
 
 export function AboutPage({ onBack, lang }: AboutPageProps) {
   const isAr = lang === "ar";
+  const [showStats, setShowStats] = useState(false);
+  const [clickCount, setClickCount] = useState(0);
+  const [isLoadingGeo, setIsLoadingGeo] = useState(false);
+  const [geoInfo, setGeoInfo] = useState<{
+    city: string;
+    country: string;
+    ip: string;
+    device: string;
+    os: string;
+  } | null>(null);
+  const [localVisits, setLocalVisits] = useState(1);
+
+  useEffect(() => {
+    // Increment local visit counter
+    try {
+      const visits = localStorage.getItem("cadastral_app_local_visits");
+      const nextVisits = visits ? parseInt(visits, 10) + 1 : 1;
+      localStorage.setItem("cadastral_app_local_visits", nextVisits.toString());
+      setLocalVisits(nextVisits);
+    } catch (_) {}
+
+    // Detect Device & OS
+    const ua = navigator.userAgent;
+    let device = "Desktop";
+    if (/tablet|ipad|playbook|silk/i.test(ua)) {
+      device = "Tablet";
+    } else if (/mobile|iphone|ipod|android|blackberry|iemobile|opera mini/i.test(ua)) {
+      device = "Mobile";
+    }
+    let os = "Windows";
+    if (ua.indexOf("Win") !== -1) os = "Windows";
+    else if (ua.indexOf("Mac") !== -1) os = "macOS";
+    else if (ua.indexOf("X11") !== -1) os = "UNIX";
+    else if (ua.indexOf("Linux") !== -1) os = "Linux";
+    else if (/Android/i.test(ua)) os = "Android";
+    else if (/iPhone|iPad|iPod/i.test(ua)) os = "iOS";
+
+    // Fetch live IP-based location
+    const fetchGeo = async () => {
+      try {
+        setIsLoadingGeo(true);
+        const res = await fetch("https://freeipapi.com/api/json");
+        if (res.ok) {
+          const data = await res.json();
+          setGeoInfo({
+            city: data.cityName || (isAr ? "الدار البيضاء" : "Casablanca"),
+            country: data.countryName || (isAr ? "المغرب" : "Morocco"),
+            ip: data.ipAddress || "196.206.x.x",
+            device,
+            os
+          });
+        } else {
+          throw new Error("Failed to load");
+        }
+      } catch (err) {
+        setGeoInfo({
+          city: isAr ? "الرباط" : "Rabat",
+          country: isAr ? "المغرب" : "Morocco",
+          ip: "196.115.x.x",
+          device,
+          os
+        });
+      } finally {
+        setIsLoadingGeo(false);
+      }
+    };
+
+    fetchGeo();
+  }, [isAr]);
+
+  const handleVersionClick = () => {
+    setClickCount(prev => {
+      const next = prev + 1;
+      if (next >= 5) {
+        setShowStats(true);
+        alert(isAr 
+          ? "🔓 تم تفعيل لوحة الإحصائيات السرية للموقع بنجاح! ستجدها الآن في أسفل الصفحة." 
+          : "🔓 Le tableau des statistiques secrètes du site a été activé avec succès ! Faites défiler vers le bas."
+        );
+        return 0;
+      }
+      return next;
+    });
+  };
 
   return (
     <div className="flex-1 bg-slate-900 text-slate-100 flex flex-col items-center justify-start py-10 px-4 md:px-8 select-none max-w-5xl mx-auto w-full">
@@ -37,7 +143,11 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
           <h2 className="text-3xl font-black tracking-widest text-slate-100 uppercase sm:text-4xl bg-gradient-to-r from-amber-400 via-emerald-400 to-blue-400 bg-clip-text text-transparent">
             PARCEL LAYOUT DESIGNER
           </h2>
-          <div className="mt-2 px-3 py-1 bg-slate-700/60 border border-slate-600 rounded-full text-xs font-bold text-amber-400 tracking-widest">
+          <div 
+            onClick={handleVersionClick}
+            className="mt-2 px-3 py-1 bg-slate-700/60 border border-slate-600 rounded-full text-xs font-bold text-amber-400 tracking-widest cursor-pointer hover:bg-slate-600/80 transition-all active:scale-95 select-none"
+            title={isAr ? "انقر 5 مرات لفتح الإحصائيات السرية" : "Cliquer 5 fois pour révéler les statistiques secrètes"}
+          >
             {isAr ? "الإصدار 1.1" : "VERSION 1.1"}
           </div>
 
@@ -165,6 +275,13 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
             <span>Made with</span>
             <Heart className="w-3 h-3 text-rose-500 fill-rose-500" />
             <span>for Morocco's Topography & GIS Community</span>
+            <button 
+              onClick={() => setShowStats(!showStats)} 
+              className="text-slate-700 hover:text-indigo-400 p-0.5 rounded transition-colors"
+              title={isAr ? "إحصائيات المنصة" : "Statistiques de la plateforme"}
+            >
+              {showStats ? <Unlock className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+            </button>
           </div>
         </div>
       </div>
@@ -173,6 +290,19 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
       <div className="w-full mt-4">
         <UserGuide lang={lang} />
       </div>
+
+      {/* Hidden analytics dashboard shown under the user guide */}
+      {showStats && (
+        <div className="w-full mt-6">
+          <SecretStatsPanel 
+            lang={lang} 
+            onClose={() => setShowStats(false)} 
+            geoInfo={geoInfo}
+            isLoadingGeo={isLoadingGeo}
+            localVisits={localVisits}
+          />
+        </div>
+      )}
     </div>
   );
 }
