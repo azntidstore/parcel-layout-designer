@@ -32,6 +32,7 @@ import {
 
 interface ParcelMapProps {
   parcel: Parcel;
+  additionalParcels?: Parcel[];
   settings: DocumentSettings;
   selectedVertexId: number | null;
   selectedSegmentId: number | null;
@@ -46,6 +47,7 @@ interface ParcelMapProps {
 
 export const ParcelMap: React.FC<ParcelMapProps> = ({
   parcel,
+  additionalParcels = [],
   settings,
   selectedVertexId,
   selectedSegmentId,
@@ -69,6 +71,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     return "cad";
   })());
   const [isDeleteMode, setDeleteMode] = useState<boolean>(false);
+  const [mapReady, setMapReady] = useState<boolean>(false);
   
   // Go To & Measurement tool states
   const [isMeasuring, setIsMeasuring] = useState<boolean>(false);
@@ -111,14 +114,20 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
   const layersRef = useRef<{
     tileLayer: L.TileLayer | null;
     polygon: L.Polygon | null;
+    additionalPolygons: L.Polygon[];
     vertexMarkers: L.Marker[];
+    additionalVertexMarkers: L.Marker[];
     labelMarkers: L.Marker[];
+    additionalLabelMarkers: L.Marker[];
     gridLines: L.Polyline[];
   }>({
     tileLayer: null,
     polygon: null,
+    additionalPolygons: [],
     vertexMarkers: [],
+    additionalVertexMarkers: [],
     labelMarkers: [],
+    additionalLabelMarkers: [],
     gridLines: [],
   });
 
@@ -138,10 +147,15 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     ? settings.projectionSystem
     : "EPSG:26191") as SupportedCRS;
 
-  // Re-orient view to center on parcel
+  // Re-orient view to center on parcel and additional adjacent parcels
   const handleRecenter = () => {
-    if (!mapRef.current || parcel.vertices.length === 0) return;
-    const latLngs = parcel.vertices
+    if (!mapRef.current) return;
+    const allSelectedVertices = [
+      ...parcel.vertices,
+      ...(additionalParcels || []).flatMap((p) => p.vertices)
+    ];
+    if (allSelectedVertices.length === 0) return;
+    const latLngs = allSelectedVertices
       .map((v) => planeToLatLng(v.x, v.y, activeCRS))
       .filter((ll) => Array.isArray(ll) && ll.length === 2 && typeof ll[0] === 'number' && !isNaN(ll[0]) && isFinite(ll[0]) && typeof ll[1] === 'number' && !isNaN(ll[1]) && isFinite(ll[1]));
     if (latLngs.length === 0) return;
@@ -177,6 +191,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     });
 
     mapRef.current = map;
+    setMapReady(true);
 
     // Record map viewport so PrintSheetLayout can use it
     const handleMoveOrZoom = () => {
@@ -197,8 +212,21 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
       map.off("zoomend", handleMoveOrZoom);
       map.remove();
       mapRef.current = null;
+      setMapReady(false);
     };
   }, []);
+
+  // Automatically fit bounds / zoom when any selected parcel list or their vertices are updated
+  const verticesSig = [
+    ...parcel.vertices.map((v) => `${v.id}:${v.x}:${v.y}`),
+    ...(additionalParcels || []).flatMap((p) => p.vertices.map((v) => `${p.id}:${v.id}:${v.x}:${v.y}`))
+  ].join("|");
+
+  useEffect(() => {
+    if (mapReady && mapRef.current) {
+      handleRecenter();
+    }
+  }, [mapReady, parcel.id, (additionalParcels || []).length, verticesSig, activeCRS]);
 
   // Update background tilelayer based on mapPreset selection
   useEffect(() => {
@@ -620,13 +648,33 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     layersRef.current.labelMarkers.forEach((m) => map.removeLayer(m));
     layersRef.current.gridLines.forEach((gl) => map.removeLayer(gl));
 
+    if (layersRef.current.additionalPolygons) {
+      layersRef.current.additionalPolygons.forEach((p) => map.removeLayer(p));
+    }
+    if (layersRef.current.additionalVertexMarkers) {
+      layersRef.current.additionalVertexMarkers.forEach((m) => map.removeLayer(m));
+    }
+    if (layersRef.current.additionalLabelMarkers) {
+      layersRef.current.additionalLabelMarkers.forEach((m) => map.removeLayer(m));
+    }
+
     layersRef.current.vertexMarkers = [];
     layersRef.current.labelMarkers = [];
     layersRef.current.gridLines = [];
+    layersRef.current.additionalPolygons = [];
+    layersRef.current.additionalVertexMarkers = [];
+    layersRef.current.additionalLabelMarkers = [];
+
+    const isSatellite = mapPreset === "satellite" || mapPreset === "google_sat";
+    const isCad = mapPreset === "cad";
 
     // 2. Render backing technical grid lines if preset is "CAD Mode"
     if (mapPreset === "cad") {
-      const latLngsGrid = parcel.vertices
+      const allSelectedVertices = [
+        ...parcel.vertices,
+        ...(additionalParcels || []).flatMap((p) => p.vertices)
+      ];
+      const latLngsGrid = allSelectedVertices
         .map((v) => planeToLatLng(v.x, v.y, activeCRS))
         .filter((ll) => Array.isArray(ll) && ll.length === 2 && typeof ll[0] === 'number' && !isNaN(ll[0]) && isFinite(ll[0]) && typeof ll[1] === 'number' && !isNaN(ll[1]) && isFinite(ll[1]));
       
@@ -673,9 +721,6 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     
     if (latLngs.length === 0) return;
 
-    const isSatellite = mapPreset === "satellite" || mapPreset === "google_sat";
-    const isCad = mapPreset === "cad";
-
     const poly = L.polygon(latLngs, {
       color: isSatellite ? "#f59e0b" : "#ef4444", // High-contrast amber for satellite layers, Red for CAD/Map
       weight: 3.5,
@@ -683,6 +728,115 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
       fillOpacity: isCad ? 0.85 : isSatellite ? 0.12 : 0.2,
     }).addTo(map);
     layersRef.current.polygon = poly;
+
+    // 3.5 Render Additional Selected Adjacent Parcels (with beautiful distinct borders & custom colors)
+    const addPolys: L.Polygon[] = [];
+    const addVertexMks: L.Marker[] = [];
+    const addLabelMks: L.Marker[] = [];
+
+    (additionalParcels || []).forEach((ap) => {
+      const apLatLngs = ap.vertices
+        .map((v) => planeToLatLng(v.x, v.y, activeCRS))
+        .filter((ll) => Array.isArray(ll) && ll.length === 2 && typeof ll[0] === 'number' && !isNaN(ll[0]) && isFinite(ll[0]) && typeof ll[1] === 'number' && !isNaN(ll[1]) && isFinite(ll[1]));
+      if (apLatLngs.length === 0) return;
+
+      const apPoly = L.polygon(apLatLngs, {
+        color: isSatellite ? "#10b981" : "#a855f7", // Emerald for satellite, Purple for CAD
+        weight: 3.0,
+        fillColor: isCad ? "#faf5ff" : isSatellite ? "#10b981" : "#a855f7",
+        fillOpacity: isCad ? 0.65 : isSatellite ? 0.1 : 0.15,
+        dashArray: "4, 6",
+      }).addTo(map);
+      
+      // Bind descriptive tooltip to identify the parcel name on hover
+      apPoly.bindTooltip(`<b>${ap.name}</b> (${lang === "ar" ? "قطعة مجاورة" : "Parcelle adjacente"})`, {
+        direction: "center",
+        permanent: false,
+        sticky: true
+      });
+
+      addPolys.push(apPoly);
+
+      // Render vertex labels for adjacent parcels so all vertices are visible
+      const apCentroid = calculateCentroid(ap.vertices);
+      ap.vertices.forEach((v) => {
+        const vLatLng = planeToLatLng(v.x, v.y, activeCRS);
+        const dxAp = v.x - apCentroid.x;
+        const dyAp = v.y - apCentroid.y;
+        const lenAp = Math.sqrt(dxAp * dxAp + dyAp * dyAp);
+        const nx = lenAp > 0 ? dxAp / lenAp : 1;
+        const ny = lenAp > 0 ? dyAp / lenAp : 0;
+        const tx = (nx * 14).toFixed(1);
+        const ty = (-ny * 14).toFixed(1);
+
+        const apVertexIcon = L.divIcon({
+          html: `
+            <div class="relative flex items-center justify-center select-none shadow-sm" style="pointer-events: none;">
+              <div class="w-2.5 h-2.5 rounded-full bg-purple-500/40 ring-1 ring-purple-400/40 border border-white/60 flex items-center justify-center">
+                <div class="w-1 h-1 rounded-full bg-white"></div>
+              </div>
+              <div 
+                style="transform: translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)); z-index: 90; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0px 1px 2px rgba(0,0,0,0.85); font-size: ${(settings.vertexFontSize || 8.5) * 1.0}px;"
+                class="absolute top-1/2 left-1/2 font-bold font-mono text-purple-200 whitespace-nowrap pointer-events-none tracking-wide"
+              >
+                ${v.label}
+              </div>
+            </div>
+          `,
+          className: "custom-vertex-marker-additional",
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
+        });
+
+        const apMk = L.marker(vLatLng, { icon: apVertexIcon, draggable: false }).addTo(map);
+        apMk.bindTooltip(`<b>${ap.name}</b> - ${v.label}<br/>X: ${v.x.toFixed(2)}<br/>Y: ${v.y.toFixed(2)}`, {
+          direction: "top",
+          offset: [0, -6]
+        });
+        addVertexMks.push(apMk);
+      });
+
+      // Show segment lengths and neighbor labels for the additional parcels if configured
+      if (settings.mapLabels !== "Aucun") {
+        ap.segments.forEach((seg) => {
+          const mid = getSegmentMidpoint(seg.startVertex, seg.endVertex);
+          const angle = getSegmentAngle(seg.startVertex, seg.endVertex);
+          const mapOffset = settings.labelOffset !== undefined ? (settings.labelOffset * 6 / 7) : 6;
+          const outPt = getOutsidePoint(apCentroid, seg.startVertex, seg.endVertex, mapOffset);
+          const outLatLng = planeToLatLng(outPt.x, outPt.y, activeCRS);
+
+          const showLength = settings.mapLabels === "Longueurs" || settings.mapLabels === "Longueurs + Voisins";
+          const showVoisin = settings.mapLabels === "Voisins" || settings.mapLabels === "Longueurs + Voisins";
+
+          let labelText = "";
+          if (showLength) labelText += `${seg.length.toFixed(2)}m`;
+          if (showLength && showVoisin && seg.neighbor) labelText += ` | `;
+          if (showVoisin && seg.neighbor) labelText += seg.neighbor;
+
+          if (labelText) {
+            const apLabelIcon = L.divIcon({
+              className: "custom-ap-label-marker",
+              html: `
+                <div 
+                  style="transform: rotate(${-angle}deg); text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0px 1.5px 2px rgba(0,0,0,0.9); font-size: ${(settings.labelFontSize || 7.0) * 1.15}px;"
+                  class="text-purple-300 font-semibold whitespace-nowrap pointer-events-none select-none text-center"
+                >
+                  ${labelText}
+                </div>
+              `,
+              iconSize: [120, 24],
+              iconAnchor: [60, 12],
+            });
+            const apLabelMk = L.marker(outLatLng, { icon: apLabelIcon }).addTo(map);
+            addLabelMks.push(apLabelMk);
+          }
+        });
+      }
+    });
+
+    layersRef.current.additionalPolygons = addPolys;
+    layersRef.current.additionalVertexMarkers = addVertexMks;
+    layersRef.current.additionalLabelMarkers = addLabelMks;
 
     // 4. Render Vertex Circles (Interactive with high frame-rate dragging or immediate click-to-delete)
     parcel.vertices.forEach((v) => {
@@ -852,22 +1006,27 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
       });
     }
 
-    // Auto fit boundaries on initial load or when parcel changes so they synchronize perfectly
-    const lastParcelId = (map as any)._lastParcelId;
-    if (lastParcelId !== parcel.id) {
+    // Auto fit boundaries on initial load or when parcel/additional selection changes so they synchronize perfectly
+    const selectionKey = parcel.id + "-" + (additionalParcels || []).map((p) => p.id).join(",");
+    const lastSelectionKey = (map as any)._lastSelectionKey;
+    if (lastSelectionKey !== selectionKey) {
       map.invalidateSize(); // Forces containment refresh to prevent faulty sizes on layout switches
-      const latLngsList = parcel.vertices
+      const allSelectedVertices = [
+        ...parcel.vertices,
+        ...(additionalParcels || []).flatMap((p) => p.vertices)
+      ];
+      const latLngsList = allSelectedVertices
         .map((v) => planeToLatLng(v.x, v.y, activeCRS))
         .filter((ll) => Array.isArray(ll) && ll.length === 2 && typeof ll[0] === 'number' && !isNaN(ll[0]) && isFinite(ll[0]) && typeof ll[1] === 'number' && !isNaN(ll[1]) && isFinite(ll[1]));
       if (latLngsList.length > 0) {
         const boundsList = L.latLngBounds(latLngsList);
         if (boundsList.isValid()) {
           map.flyToBounds(boundsList, { padding: [50, 50], duration: 0.8 });
-          (map as any)._lastParcelId = parcel.id;
+          (map as any)._lastSelectionKey = selectionKey;
         }
       }
     }
-  }, [parcel, settings, selectedVertexId, selectedSegmentId, mapPreset, activeCRS, isDeleteMode]);
+  }, [parcel, additionalParcels, settings, selectedVertexId, selectedSegmentId, mapPreset, activeCRS, isDeleteMode]);
 
   // Active mouse coordinates tracker over Leaflet footprint
   useEffect(() => {

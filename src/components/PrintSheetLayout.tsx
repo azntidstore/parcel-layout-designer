@@ -218,6 +218,7 @@ function replaceModernColorsInCss(cssText: string): string {
 
 interface PrintSheetLayoutProps {
   parcel: Parcel;
+  additionalParcels?: Parcel[];
   settings: DocumentSettings;
   onBackToEditor: () => void;
   initialLayoutType?: "type1" | "type2";
@@ -225,6 +226,7 @@ interface PrintSheetLayoutProps {
 
 export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
   parcel,
+  additionalParcels = [],
   settings,
   onBackToEditor,
   initialLayoutType = "type1",
@@ -252,8 +254,9 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
     ? settings.projectionSystem
     : "EPSG:26191") as SupportedCRS;
 
-  const xs = parcel.vertices.map((v) => v.x);
-  const ys = parcel.vertices.map((v) => v.y);
+  const allSelectedParcels = [parcel, ...additionalParcels];
+  const xs = allSelectedParcels.flatMap((p) => p.vertices.map((v) => v.x));
+  const ys = allSelectedParcels.flatMap((p) => p.vertices.map((v) => v.y));
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
   const minY = Math.min(...ys);
@@ -289,9 +292,39 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
   const physicalWidthMm = Math.round((deltaX / finalNumericalScale) * 1000);
   const physicalHeightMm = Math.round((deltaY / finalNumericalScale) * 1000);
 
-  // Page 2 width and height in mm
-  const page2WidthMm = Math.max(297, physicalWidthMm + 180); // Expanded to reserve space for Coordinates Table AND give comfortable margin for neighbors labels
   const page2HeightMm = Math.max(210, physicalHeightMm + 70); // Expanded vertically to provide balanced visual breathing room around the parcel
+
+  // Estimate height available for the table: (svgHeight - borders/padding) divided by 2.5 to get mm
+  const estTableHeightMm = page2HeightMm - 17.6;
+  // Each table row takes around 4.0mm of height. Allow at least 10 rows per column.
+  const maxRowsPerColumn = Math.max(10, Math.floor((estTableHeightMm - 14) / 4.0));
+
+  // Compute column and width details for each selected parcel
+  const parcelsColumnInfo = allSelectedParcels.map((p) => {
+    const pTotalPoints = p.vertices.length;
+    const pNumColumns = Math.ceil(pTotalPoints / maxRowsPerColumn);
+    const pRowsPerColumn = Math.ceil(pTotalPoints / pNumColumns);
+    const colWidthMm = 36;
+    const gapWidthMm = 3;
+    const paddingAndBordersMm = 8;
+    const pCalculatedWidthMm = pNumColumns * colWidthMm + (pNumColumns - 1) * gapWidthMm + paddingAndBordersMm;
+    return {
+      parcelId: p.id,
+      parcelName: p.name,
+      totalPoints: pTotalPoints,
+      numColumns: pNumColumns,
+      rowsPerColumn: pRowsPerColumn,
+      widthMm: pCalculatedWidthMm,
+      vertices: p.vertices,
+    };
+  });
+
+  const totalTablesGapMm = 4;
+  const combinedTablesWidthMm = parcelsColumnInfo.reduce((sum, info) => sum + info.widthMm, 0) + (parcelsColumnInfo.length - 1) * totalTablesGapMm;
+  const containerWidthMm = Math.max(80, combinedTablesWidthMm);
+
+  // Page 2 width and height in mm
+  const page2WidthMm = Math.max(297, physicalWidthMm + Math.max(180, containerWidthMm + 40)); // Expanded to reserve space for Coordinates Table AND give comfortable margin for neighbors labels
 
   // Width and height details of the combined physical sheets
   const totalWidthMm = printLayoutType === "type2" ? page2WidthMm : 210 + page2WidthMm; // Page 1 Portrait (210) + Page 2 Variable (Landscape)
@@ -300,21 +333,6 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
   // 3. Definitive Dynamic SVG Coordinates matching 100% of physical page aspect ratio
   const svgWidth = page2WidthMm * 2.5;
   const svgHeight = page2HeightMm * 2.5;
-
-  // Dynamic calculations for the Coordinates Table columns on Page 2
-  const totalPoints = parcel.vertices.length;
-  // Estimate height available for the table: (svgHeight - borders/padding) divided by 2.5 to get mm
-  const estTableHeightMm = page2HeightMm - 17.6;
-  // Each table row takes around 4.0mm of height. Allow at least 10 rows per column.
-  const maxRowsPerColumn = Math.max(10, Math.floor((estTableHeightMm - 14) / 4.0));
-  const numColumns = Math.ceil(totalPoints / maxRowsPerColumn);
-  const rowsPerColumn = Math.ceil(totalPoints / numColumns);
-
-  const colWidthMm = 36;
-  const gapWidthMm = 3;
-  const paddingAndBordersMm = 8;
-  const calculatedWidthMm = numColumns * colWidthMm + (numColumns - 1) * gapWidthMm + paddingAndBordersMm;
-  const containerWidthMm = Math.max(80, calculatedWidthMm);
 
   // Perfectly symmetric inner boundaries to center the coordinate grid/grille harmoniously
   const mapLeft = 28;
@@ -358,6 +376,31 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
     gridTicksY.push(gy);
   }
 
+  // Professionally split neighbors with text-wrapping over 2 lines to avoid overlap and clipping
+  const splitNeighborText = (text: string): string[] => {
+    if (!text) return [];
+    const trimmed = text.trim();
+    if (trimmed.length <= 13) return [trimmed];
+    const words = trimmed.split(/\s+/);
+    if (words.length <= 1) return [trimmed];
+    
+    let bestDiff = Infinity;
+    let splitIdx = 1;
+    for (let i = 1; i < words.length; i++) {
+      const firstHalf = words.slice(0, i).join(" ");
+      const secondHalf = words.slice(i).join(" ");
+      const diff = Math.abs(firstHalf.length - secondHalf.length);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        splitIdx = i;
+      }
+    }
+    return [
+      words.slice(0, splitIdx).join(" "),
+      words.slice(splitIdx).join(" ")
+    ];
+  };
+
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [showIframeModal, setShowIframeModal] = useState(false);
@@ -381,8 +424,12 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
     const container = document.getElementById("page1-aerial-minimap");
     if (!container || parcel.vertices.length === 0) return;
 
-    // Convert parcel vertices to LatLng array using activeCRS
-    const latLngs = parcel.vertices
+    // Convert all selected parcel vertices to LatLng array using activeCRS
+    const allSelectedVertices = [
+      ...parcel.vertices,
+      ...(additionalParcels || []).flatMap((p) => p.vertices)
+    ];
+    const latLngs = allSelectedVertices
       .map((v) => planeToLatLng(v.x, v.y, activeCRS))
       .filter((ll) => Array.isArray(ll) && ll.length === 2 && typeof ll[0] === 'number' && !isNaN(ll[0]) && isFinite(ll[0]) && typeof ll[1] === 'number' && !isNaN(ll[1]) && isFinite(ll[1]));
 
@@ -453,14 +500,37 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
       }).addTo(map);
     }
 
-    // Draw the Red Polygon for the parcel on top
     const isSatellite = savedPreset === "satellite" || savedPreset === "google_sat";
-    L.polygon(latLngs, {
-      color: isSatellite ? "#f59e0b" : "#ef4444",      // Bright amber for sat/hybrid, red otherwise
-      weight: 3.5,
-      fillColor: isSatellite ? "#f59e0b" : "#ef4444",
-      fillOpacity: savedPreset === "cad" ? 0.08 : isSatellite ? 0.12 : 0.2,
-    }).addTo(map);
+
+    // Draw the main Red Polygon for the primary parcel on top
+    const primaryLatLngs = parcel.vertices
+      .map((v) => planeToLatLng(v.x, v.y, activeCRS))
+      .filter((ll) => Array.isArray(ll) && ll.length === 2 && typeof ll[0] === 'number' && !isNaN(ll[0]) && isFinite(ll[0]) && typeof ll[1] === 'number' && !isNaN(ll[1]) && isFinite(ll[1]));
+    
+    if (primaryLatLngs.length > 0) {
+      L.polygon(primaryLatLngs, {
+        color: isSatellite ? "#f59e0b" : "#ef4444",      // Bright amber for sat/hybrid, red otherwise
+        weight: 3.5,
+        fillColor: isSatellite ? "#f59e0b" : "#ef4444",
+        fillOpacity: savedPreset === "cad" ? 0.08 : isSatellite ? 0.12 : 0.2,
+      }).addTo(map);
+    }
+
+    // Draw polygons for any additional selected parcels
+    (additionalParcels || []).forEach((ap) => {
+      const apLatLngs = ap.vertices
+        .map((v) => planeToLatLng(v.x, v.y, activeCRS))
+        .filter((ll) => Array.isArray(ll) && ll.length === 2 && typeof ll[0] === 'number' && !isNaN(ll[0]) && isFinite(ll[0]) && typeof ll[1] === 'number' && !isNaN(ll[1]) && isFinite(ll[1]));
+      if (apLatLngs.length === 0) return;
+
+      L.polygon(apLatLngs, {
+        color: isSatellite ? "#10b981" : "#a855f7",      // emerald for sat, purple otherwise
+        weight: 3.0,
+        fillColor: isSatellite ? "#10b981" : "#a855f7",
+        fillOpacity: savedPreset === "cad" ? 0.05 : isSatellite ? 0.1 : 0.15,
+        dashArray: "3, 4",
+      }).addTo(map);
+    });
 
     let adjustZoomTimer: any = null;
 
@@ -486,7 +556,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
         minimapRef.current = null;
       }
     };
-  }, [parcel, activeCRS]);
+  }, [parcel, additionalParcels, activeCRS]);
 
   const mmToPx = 3.7795275590551;
 
@@ -1363,49 +1433,61 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                   Tableau des Coordonnées
                 </span>
                 <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin">
-                  <div className="flex flex-row gap-[3mm] items-start justify-start h-full pb-1">
-                    {(() => {
+                  <div className="flex flex-row gap-[4mm] items-start justify-start h-full pb-1">
+                    {parcelsColumnInfo.map((pInfo, pIdx) => {
                       const columnsArray: typeof parcel.vertices[] = [];
-                      for (let i = 0; i < totalPoints; i += rowsPerColumn) {
-                        columnsArray.push(parcel.vertices.slice(i, i + rowsPerColumn));
+                      for (let i = 0; i < pInfo.totalPoints; i += pInfo.rowsPerColumn) {
+                        columnsArray.push(pInfo.vertices.slice(i, i + pInfo.rowsPerColumn));
                       }
                       
-                      return columnsArray.map((colVertices, colIdx) => (
-                        <div 
-                          key={colIdx} 
-                          className="w-[36mm] min-w-[36mm] border border-stone-300 rounded bg-white overflow-hidden shadow-sm flex flex-col"
-                          style={{ maxHeight: "100%" }}
-                        >
-                          <table className="w-full text-left font-mono border-collapse">
-                            <thead className="bg-stone-200 text-stone-900 border-b border-stone-400 text-[8px] font-extrabold sticky top-0">
-                              <tr>
-                                <th className="px-1.5 py-1 uppercase text-center border-r border-stone-300 w-[25%]">FID</th>
-                                <th className="px-1.5 py-1 uppercase text-right border-r border-stone-300">X (m)</th>
-                                <th className="px-1.5 py-1 uppercase text-right">Y (m)</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-stone-200 text-stone-950 text-[8.5px]">
-                              {colVertices.map((v) => {
-                                const origIdx = parcel.vertices.findIndex((orig) => orig.id === v.id);
-                                return (
-                                  <tr key={v.id} className="hover:bg-amber-50/25 odd:bg-stone-100/20">
-                                    <td className="px-1.5 py-0.5 font-bold text-center border-r border-stone-200">
-                                      {v.label || `P${origIdx + 1}`}
-                                    </td>
-                                    <td className="px-1.5 py-0.5 text-right font-medium border-r border-stone-200 bg-stone-50/10">
-                                      {v.x.toFixed(2)}
-                                    </td>
-                                    <td className="px-1.5 py-0.5 text-right font-medium">
-                                      {v.y.toFixed(2)}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
+                      return (
+                        <div key={`p-table-${pInfo.parcelId}`} className="flex flex-row gap-[3mm] h-full items-start">
+                          {pIdx > 0 && <div className="w-[1px] bg-stone-300 h-full self-stretch" />}
+                          <div className="flex flex-col gap-1 h-full">
+                            <span className="text-[8px] font-bold text-stone-700 truncate max-w-[70mm] block">
+                              {pInfo.parcelName}
+                            </span>
+                            <div className="flex flex-row gap-[3mm] h-full items-start">
+                              {columnsArray.map((colVertices, colIdx) => (
+                                <div 
+                                  key={colIdx} 
+                                  className="w-[36mm] min-w-[36mm] border border-stone-300 rounded bg-white overflow-hidden shadow-sm flex flex-col"
+                                  style={{ maxHeight: "100%" }}
+                                >
+                                  <table className="w-full text-left font-mono border-collapse">
+                                    <thead className="bg-stone-200 text-stone-900 border-b border-stone-400 text-[8px] font-extrabold sticky top-0">
+                                      <tr>
+                                        <th className="px-1.5 py-1 uppercase text-center border-r border-stone-300 w-[25%]">FID</th>
+                                        <th className="px-1.5 py-1 uppercase text-right border-r border-stone-300">X (m)</th>
+                                        <th className="px-1.5 py-1 uppercase text-right">Y (m)</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-stone-200 text-stone-950 text-[8.5px]">
+                                      {colVertices.map((v) => {
+                                        const origIdx = pInfo.vertices.findIndex((orig) => orig.id === v.id);
+                                        return (
+                                          <tr key={v.id} className="hover:bg-amber-50/25 odd:bg-stone-100/20">
+                                            <td className="px-1.5 py-0.5 font-bold text-center border-r border-stone-200">
+                                              {v.label || `P${origIdx + 1}`}
+                                            </td>
+                                            <td className="px-1.5 py-0.5 text-right font-medium border-r border-stone-200 bg-stone-50/10">
+                                              {v.x.toFixed(2)}
+                                            </td>
+                                            <td className="px-1.5 py-0.5 text-right font-medium">
+                                              {v.y.toFixed(2)}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         </div>
-                      ));
-                    })()}
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -1599,6 +1681,199 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                   strokeWidth="2.5"
                 />
 
+                {/* Additional adjacent parcels */}
+                {(additionalParcels || []).map((ap) => {
+                  const apSvgVertices = ap.vertices.map((v) => ({
+                    ...v,
+                    ...projectToSvg(v.x, v.y),
+                  }));
+                  
+                  return (
+                    <g key={`ap-group-${ap.id}`}>
+                      {/* Polygon with elegant dashed border */}
+                      <polygon
+                        points={apSvgVertices.map((v) => `${v.x},${v.y}`).join(" ")}
+                        fill="none"
+                        stroke="#a855f7" // Purple/Amethyst for secondary/adjacent parcels
+                        strokeWidth="1.8"
+                        strokeDasharray="3,3"
+                      />
+                      
+                      {/* Vertex circles & labels */}
+                      {(() => {
+                        const apCentroid = calculateCentroid(ap.vertices);
+                        
+                        return apSvgVertices.map((v) => {
+                          const dx = v.x - projectToSvg(apCentroid.x, apCentroid.y).x;
+                          const dy = v.y - projectToSvg(apCentroid.x, apCentroid.y).y;
+                          const len = Math.sqrt(dx * dx + dy * dy);
+                          const nx = len > 0 ? dx / len : 1;
+                          const ny = len > 0 ? dy / len : 0;
+                          
+                          const labelX = v.x + nx * 7.5;
+                          const labelY = v.y + ny * 7.5;
+                          
+                          return (
+                            <g key={`ap-v-${v.id}`}>
+                              <circle cx={v.x} cy={v.y} r="2" fill="#a855f7" stroke="#ffffff" strokeWidth="0.75" />
+                              <text
+                                x={labelX}
+                                y={labelY + 2.2}
+                                textAnchor="middle"
+                                stroke="#ffffff"
+                                strokeWidth="2.5"
+                                strokeLinejoin="round"
+                                style={{ fontSize: `${(settings.vertexFontSize || 8.5) * 0.85}px` }}
+                                className="font-sans font-black select-none"
+                              >
+                                {v.label}
+                              </text>
+                              <text
+                                x={labelX}
+                                y={labelY + 2.2}
+                                textAnchor="middle"
+                                style={{ fontSize: `${(settings.vertexFontSize || 8.5) * 0.85}px` }}
+                                className="font-sans font-black fill-stone-700 select-none"
+                              >
+                                {v.label}
+                              </text>
+                            </g>
+                          );
+                        });
+                      })()}
+
+                      {/* Segment Labels */}
+                      {ap.segments.map((seg) => {
+                        const labelOffset = settings.labelOffset !== undefined ? settings.labelOffset : 7;
+                        const apCentroid = calculateCentroid(ap.vertices);
+                        const insidePrPoint = getOutsidePoint(apCentroid, seg.startVertex, seg.endVertex, labelOffset);
+                        const pt = projectToSvg(insidePrPoint.x, insidePrPoint.y);
+
+                        if (pt.x < mapLeft + 10 || pt.x > mapRight - 10 || pt.y < mapTop + 10 || pt.y > mapBottom - 10) {
+                          return null;
+                        }
+
+                        const angle = getSegmentAngle(seg.startVertex, seg.endVertex);
+                        const showL = settings.mapLabels === "Longueurs" || settings.mapLabels === "Longueurs + Voisins";
+                        const showN = settings.mapLabels === "Voisins" || settings.mapLabels === "Longueurs + Voisins";
+
+                        const neighborLines = showN && seg.neighbor ? splitNeighborText(seg.neighbor) : [];
+                        const baseLabelSize = (settings.labelFontSize !== undefined ? settings.labelFontSize : 7.0) * 0.85;
+                        const neighborFontSize = `${baseLabelSize * 0.9}px`;
+                        const lengthFontSize = `${baseLabelSize}px`;
+
+                        return (
+                          <g key={`ap-seg-${seg.id}`}>
+                            <g transform={`translate(${pt.x}, ${pt.y}) rotate(${-angle})`}>
+                              {showL && (
+                                <g>
+                                  <text
+                                    x="0"
+                                    y="-3"
+                                    textAnchor="middle"
+                                    stroke="#ffffff"
+                                    strokeWidth="2.5"
+                                    strokeLinejoin="round"
+                                    style={{ fontSize: lengthFontSize }}
+                                    className="font-sans font-black select-none"
+                                  >
+                                    {seg.length.toFixed(2)} m
+                                  </text>
+                                  <text
+                                    x="0"
+                                    y="-3"
+                                    textAnchor="middle"
+                                    style={{ fontSize: lengthFontSize }}
+                                    className="font-sans font-black fill-purple-800 select-none"
+                                  >
+                                    {seg.length.toFixed(2)} m
+                                  </text>
+                                </g>
+                              )}
+
+                              {showN && neighborLines.length > 0 && (
+                                <g>
+                                  {neighborLines.length === 1 ? (
+                                    <g>
+                                      <text
+                                        x="0"
+                                        y="4"
+                                        textAnchor="middle"
+                                        stroke="#ffffff"
+                                        strokeWidth="2.5"
+                                        strokeLinejoin="round"
+                                        style={{ fontSize: neighborFontSize }}
+                                        className="font-sans font-bold select-none"
+                                      >
+                                        {neighborLines[0]}
+                                      </text>
+                                      <text
+                                        x="0"
+                                        y="4"
+                                        textAnchor="middle"
+                                        style={{ fontSize: neighborFontSize }}
+                                        className="font-sans font-semibold fill-stone-600 select-none"
+                                      >
+                                        {neighborLines[0]}
+                                      </text>
+                                    </g>
+                                  ) : (
+                                    <g>
+                                      <text
+                                        x="0"
+                                        y="3.5"
+                                        textAnchor="middle"
+                                        stroke="#ffffff"
+                                        strokeWidth="2.5"
+                                        strokeLinejoin="round"
+                                        style={{ fontSize: `${baseLabelSize * 0.8}px` }}
+                                        className="font-sans font-bold select-none"
+                                      >
+                                        {neighborLines[0]}
+                                      </text>
+                                      <text
+                                        x="0"
+                                        y="3.5"
+                                        textAnchor="middle"
+                                        style={{ fontSize: `${baseLabelSize * 0.8}px` }}
+                                        className="font-sans font-semibold fill-stone-600 select-none"
+                                      >
+                                        {neighborLines[0]}
+                                      </text>
+
+                                      <text
+                                        x="0"
+                                        y="9.5"
+                                        textAnchor="middle"
+                                        stroke="#ffffff"
+                                        strokeWidth="2.5"
+                                        strokeLinejoin="round"
+                                        style={{ fontSize: `${baseLabelSize * 0.8}px` }}
+                                        className="font-sans font-bold select-none"
+                                      >
+                                        {neighborLines[1]}
+                                      </text>
+                                      <text
+                                        x="0"
+                                        y="9.5"
+                                        textAnchor="middle"
+                                        style={{ fontSize: `${baseLabelSize * 0.8}px` }}
+                                        className="font-sans font-semibold fill-stone-600 select-none"
+                                      >
+                                        {neighborLines[1]}
+                                      </text>
+                                    </g>
+                                  )}
+                                </g>
+                              )}
+                            </g>
+                          </g>
+                        );
+                      })}
+                    </g>
+                  );
+                })}
+
                 {/* Labels of segments */}
                 {parcel.segments.map((seg) => {
                   const labelOffset = settings.labelOffset !== undefined ? settings.labelOffset : 7;
@@ -1612,31 +1887,6 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                   const angle = getSegmentAngle(seg.startVertex, seg.endVertex);
                   const showL = settings.mapLabels === "Longueurs" || settings.mapLabels === "Longueurs + Voisins";
                   const showN = settings.mapLabels === "Voisins" || settings.mapLabels === "Longueurs + Voisins";
-
-                  // Professionally split neighbors with text-wrapping over 2 lines to avoid overlap and clipping
-                  const splitNeighborText = (text: string): string[] => {
-                    if (!text) return [];
-                    const trimmed = text.trim();
-                    if (trimmed.length <= 13) return [trimmed];
-                    const words = trimmed.split(/\s+/);
-                    if (words.length <= 1) return [trimmed];
-                    
-                    let bestDiff = Infinity;
-                    let splitIdx = 1;
-                    for (let i = 1; i < words.length; i++) {
-                      const firstHalf = words.slice(0, i).join(" ");
-                      const secondHalf = words.slice(i).join(" ");
-                      const diff = Math.abs(firstHalf.length - secondHalf.length);
-                      if (diff < bestDiff) {
-                        bestDiff = diff;
-                        splitIdx = i;
-                      }
-                    }
-                    return [
-                      words.slice(0, splitIdx).join(" "),
-                      words.slice(splitIdx).join(" ")
-                    ];
-                  };
 
                   const neighborLines = showN && seg.neighbor ? splitNeighborText(seg.neighbor) : [];
                   const baseLabelSize = settings.labelFontSize !== undefined ? settings.labelFontSize : 7.0;

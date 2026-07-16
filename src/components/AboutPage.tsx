@@ -146,7 +146,6 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
           <div 
             onClick={handleVersionClick}
             className="mt-2 px-3 py-1 bg-slate-700/60 border border-slate-600 rounded-full text-xs font-bold text-amber-400 tracking-widest cursor-pointer hover:bg-slate-600/80 transition-all active:scale-95 select-none"
-            title={isAr ? "انقر 5 مرات لفتح الإحصائيات السرية" : "Cliquer 5 fois pour révéler les statistiques secrètes"}
           >
             {isAr ? "الإصدار 1.1" : "VERSION 1.1"}
           </div>
@@ -278,7 +277,6 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
             <button 
               onClick={() => setShowStats(!showStats)} 
               className="text-slate-700 hover:text-indigo-400 p-0.5 rounded transition-colors"
-              title={isAr ? "إحصائيات المنصة" : "Statistiques de la plateforme"}
             >
               {showStats ? <Unlock className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
             </button>

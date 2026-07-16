@@ -49,6 +49,7 @@ import {
   MapPin,
   CheckCircle,
   HelpCircle,
+  Check,
 } from "lucide-react";
 
 export default function App() {
@@ -88,6 +89,20 @@ export default function App() {
       return saved;
     } catch (_) {
       return "parcelle-par-defaut";
+    }
+  });
+
+  const [selectedParcelIds, setSelectedParcelIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("cadastral_selected_parcel_ids");
+      const parsed = saved ? JSON.parse(saved) : [];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+      const initialActive = localStorage.getItem("cadastral_selected_parcel_id") || "parcelle-par-defaut";
+      return [initialActive];
+    } catch (_) {
+      return ["parcelle-par-defaut"];
     }
   });
 
@@ -384,17 +399,56 @@ export default function App() {
 
   // Reference hooks & Form parameters
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [newVertexX, setNewVertexX] = useState<string>("");
-  const [newVertexY, setNewVertexY] = useState<string>("");
+  const [newVertices, setNewVertices] = useState<Record<string, { x: string; y: string }>>({});
 
   // Retrieve active parcel details
   const activeParcel = parcels.find((p) => p.id === selectedParcelId) || parcels[0];
 
+  const additionalParcels = parcels.filter(
+    (p) => selectedParcelIds.includes(p.id) && p.id !== selectedParcelId
+  );
+
+  const toggleParcelMultiSelect = (pId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setSelectedParcelIds((prev) => {
+      let updated: string[];
+      if (prev.includes(pId)) {
+        if (pId === selectedParcelId) {
+          const remaining = prev.filter((id) => id !== pId);
+          if (remaining.length > 0) {
+            setSelectedParcelId(remaining[0]);
+            updated = remaining;
+          } else {
+            return prev;
+          }
+        } else {
+          updated = prev.filter((id) => id !== pId);
+        }
+      } else {
+        updated = [...prev, pId];
+      }
+      return updated;
+    });
+  };
+
+  const selectPrimaryParcel = (pId: string) => {
+    setSelectedParcelId(pId);
+    setSelectedParcelIds((prev) => {
+      return prev.includes(pId) ? prev : [...prev, pId];
+    });
+  };
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("cadastral_selected_parcel_ids", JSON.stringify(selectedParcelIds));
+    } catch (_) {}
+  }, [selectedParcelIds]);
+
   // Sync state helpers when coordinates or vertices change
-  const handleVertexUpdate = (id: number, updatedX: number, updatedY: number) => {
+  const handleVertexUpdate = (id: number, updatedX: number, updatedY: number, targetParcelId: string = selectedParcelId) => {
     setParcels((prevParcels) =>
       prevParcels.map((p) => {
-        if (p.id !== selectedParcelId) return p;
+        if (p.id !== targetParcelId) return p;
 
         // Map and update target vertex point coordinates
         const updatedVertices = p.vertices.map((v) =>
@@ -423,10 +477,10 @@ export default function App() {
   };
 
   // Persists edited neighbor credentials immediately into App state
-  const handleNeighborUpdate = (segmentId: number, nameText: string) => {
+  const handleNeighborUpdate = (segmentId: number, nameText: string, targetParcelId: string = selectedParcelId) => {
     setParcels((prevParcels) =>
       prevParcels.map((p) => {
-        if (p.id !== selectedParcelId) return p;
+        if (p.id !== targetParcelId) return p;
         const updatedSegments = p.segments.map((s) =>
           s.id === segmentId ? { ...s, neighbor: nameText } : s
         );
@@ -438,27 +492,11 @@ export default function App() {
     );
   };
 
-  // Adds a vertex manually via sidebar coordinate submission
-  const handleAddVertexSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const xVal = parseFloat(newVertexX);
-    const yVal = parseFloat(newVertexY);
-
-    if (isNaN(xVal) || isNaN(yVal)) {
-      alert("Veuillez saisir des coordonnées numériques valides.");
-      return;
-    }
-
-    handleAddVertex(xVal, yVal);
-    setNewVertexX("");
-    setNewVertexY("");
-  };
-
   // Add vertex logic utilized by both Form and Draggable events
-  const handleAddVertex = (x: number, y: number, insertAtIndex?: number) => {
+  const handleAddVertex = (x: number, y: number, insertAtIndex?: number, targetParcelId: string = selectedParcelId) => {
     setParcels((prevParcels) =>
       prevParcels.map((p) => {
-        if (p.id !== selectedParcelId) return p;
+        if (p.id !== targetParcelId) return p;
 
         const nextId = p.vertices.length > 0 ? Math.max(...p.vertices.map((v) => v.id)) + 1 : 1;
         const newVert: Vertex = {
@@ -499,15 +537,16 @@ export default function App() {
   };
 
   // Deletes target vertex and triggers re-calculations
-  const handleDeleteVertex = (vertexId: number) => {
-    if (activeParcel.vertices.length <= 3) {
+  const handleDeleteVertex = (vertexId: number, targetParcelId: string = selectedParcelId) => {
+    const targetParcel = parcels.find(p => p.id === targetParcelId) || activeParcel;
+    if (targetParcel.vertices.length <= 3) {
       alert("Une parcelle doit comporter au moins 3 points d'angle pour délimiter une surface !");
       return;
     }
 
     setParcels((prevParcels) =>
       prevParcels.map((p) => {
-        if (p.id !== selectedParcelId) return p;
+        if (p.id !== targetParcelId) return p;
 
         // Skip target point and re-index vertex labels for consistency
         const filteredVertices = p.vertices
@@ -964,6 +1003,7 @@ export default function App() {
       {viewMode === "print_preview" ? (
         <PrintSheetLayout
           parcel={activeParcel}
+          additionalParcels={additionalParcels}
           settings={settings}
           onBackToEditor={() => setViewMode("map_editor")}
           initialLayoutType={printLayoutType}
@@ -1152,25 +1192,47 @@ export default function App() {
                               const matchP = parcels.find(p => p.id === pId);
                               if (!matchP) return null;
                               const isActive = selectedParcelId === pId;
+                              const isMultiSelected = selectedParcelIds.includes(pId);
                               return (
-                                <button
+                                <div
                                   key={pId}
-                                  onClick={() => {
-                                    setSelectedParcelId(pId);
-                                  }}
-                                  className={`w-full text-left px-2.5 py-1.5 rounded transition flex items-start justify-between min-h-[36px] border ${
+                                  className={`w-full rounded transition flex items-center gap-2 p-1.5 border ${
                                     isActive 
-                                      ? "bg-emerald-600/20 text-emerald-300 border-emerald-500/60 font-bold" 
+                                      ? "bg-emerald-600/10 text-emerald-300 border-emerald-500/40 font-bold" 
+                                      : isMultiSelected
+                                      ? "bg-purple-950/20 text-purple-300 border-purple-500/30"
                                       : "bg-slate-900/60 hover:bg-slate-800 text-slate-300 border-slate-800/40"
                                   }`}
                                 >
-                                  <span className={`font-semibold text-[10.5px] break-words whitespace-normal flex-1 mr-2 ${lang === "ar" ? "text-right" : "text-left"}`}>
-                                    {matchP.name}
-                                  </span>
-                                  <span className="text-[8.5px] font-mono opacity-80 shrink-0 font-bold bg-slate-950/40 px-1.5 py-0.5 rounded text-emerald-400 mt-0.5 font-sans">
-                                    {lang === "ar" ? `${matchP.vertices.length} قمم` : `${matchP.vertices.length} Bornes`}
-                                  </span>
-                                </button>
+                                  {/* Custom Checkbox button to toggle multi-selection for joint viewing */}
+                                  <button
+                                    onClick={(e) => toggleParcelMultiSelect(pId, e)}
+                                    title={lang === "ar" ? "تحديد للمعاينة والطباعة المشتركة" : "Sélectionner pour aperçu et impression conjoint"}
+                                    className={`flex items-center justify-center w-5 h-5 rounded border transition-all shrink-0 ${
+                                      isMultiSelected
+                                        ? "bg-purple-600 border-purple-400 text-white"
+                                        : "border-slate-700 hover:border-slate-500 bg-slate-950"
+                                    }`}
+                                  >
+                                    {isMultiSelected && <Check className="w-3.5 h-3.5" />}
+                                  </button>
+
+                                  {/* Main selection trigger button to set as primary active parcel */}
+                                  <button
+                                    onClick={() => selectPrimaryParcel(pId)}
+                                    title={lang === "ar" ? "تعديل وتحديد رئيسي" : "Éditer et définir comme principal"}
+                                    className={`flex-1 flex items-start justify-between min-h-[26px] py-0.5 px-1 focus:outline-none ${
+                                      lang === "ar" ? "flex-row-reverse text-right" : "flex-row text-left"
+                                    }`}
+                                  >
+                                    <span className={`font-semibold text-[10.5px] break-words whitespace-normal flex-1 leading-snug ${lang === "ar" ? "text-right" : "text-left"}`}>
+                                      {matchP.name}
+                                    </span>
+                                    <span className="text-[8.5px] font-mono opacity-80 shrink-0 font-bold bg-slate-950/40 px-1.5 py-0.5 rounded text-emerald-400 ml-2 font-sans">
+                                      {lang === "ar" ? `${matchP.vertices.length} قمم` : `${matchP.vertices.length} Bornes`}
+                                    </span>
+                                  </button>
+                                </div>
                               );
                             })}
                           </>
@@ -1638,6 +1700,7 @@ export default function App() {
               <div className="h-[650px] rounded-xl overflow-hidden shadow-2xl border border-slate-750 bg-slate-950 relative">
                 <ParcelMap
                   parcel={activeParcel}
+                  additionalParcels={additionalParcels}
                   settings={settings}
                   selectedVertexId={selectedVertexId}
                   selectedSegmentId={selectedSegmentId}
@@ -1653,180 +1716,228 @@ export default function App() {
             </div>
 
             {/* Low Pane: Dual Tables Layout Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
-              {/* Table Left: Point details & X-Y Lambert Metris */}
-              <div className="bg-slate-800/60 border border-slate-700/60 p-5 rounded-xl flex flex-col gap-4">
-                <div className="flex items-center justify-between border-b border-slate-700 pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <Table className="w-4 h-4 text-amber-400" />
-                    <h3 className="text-[12px] font-bold text-slate-100 uppercase tracking-wider font-sans">
-                      {t.verticesTableTitle}
-                    </h3>
-                  </div>
-                  <span className="text-[9px] font-mono text-slate-500 uppercase">{lang === "ar" ? "سحب وإفلات متزامن" : "Interactive Drag Sync"}</span>
-                </div>
+            <div className="flex flex-col gap-8">
+              {[activeParcel, ...additionalParcels].map((p) => {
+                const isPrimary = p.id === selectedParcelId;
+                const pNewVertex = newVertices[p.id] || { x: "", y: "" };
+                
+                return (
+                  <div key={`tables-group-${p.id}`} className="flex flex-col gap-3 bg-slate-850/20 p-4 rounded-2xl border border-slate-800/80">
+                    {/* Parcel Table Section Title */}
+                    <div className="flex items-center justify-between border-b border-slate-700 pb-2">
+                      <div className="flex items-center gap-2 font-sans">
+                        <span className={`w-2.5 h-2.5 rounded-full ${isPrimary ? 'bg-emerald-500' : 'bg-purple-500'}`}></span>
+                        <h4 className="text-sm font-bold text-slate-200">
+                          {lang === "ar" 
+                            ? `جداول القياسات والحدود لـ: ${p.name} ${isPrimary ? "(الرئيسية)" : "(مضافة)"}`
+                            : `Mesures et limites de : ${p.name} ${isPrimary ? "(Principale)" : "(Jointe)"}`
+                          }
+                        </h4>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2.5 py-0.5 rounded border border-slate-800/60 font-sans">
+                        {p.vertices.length} {lang === "ar" ? "قمم" : "Sommets"} | {p.area.toFixed(2)} m²
+                      </span>
+                    </div>
 
-                <div className="overflow-x-auto max-h-[220px]">
-                  <table className="w-full text-left bg-slate-900 p-1.5 rounded border border-slate-800/80 font-mono text-xs">
-                    <thead>
-                      <tr className="bg-slate-850/50 text-slate-400 border-b border-slate-700 font-sans">
-                        <th className="px-3 py-2 text-center">{t.thVertexName}</th>
-                        <th className="px-3 py-2 text-right">{lang === "ar" ? "إحداثي لومبرت X (م)" : "Raw X (m)"}</th>
-                        <th className="px-3 py-2 text-right">{lang === "ar" ? "إحداثي لومبرت Y (م)" : "Raw Y (m)"}</th>
-                        <th className="px-3 py-2 text-center">{lang === "ar" ? "حذف" : "Retirer"}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50">
-                      {activeParcel.vertices.map((v) => {
-                        const isHighlight = selectedVertexId === v.id;
-                        return (
-                          <tr
-                            key={v.id}
-                            className={`transition-colors whitespace-nowrap ${
-                              isHighlight ? "bg-red-950/45 text-[#fff]" : "hover:bg-slate-800/30 text-slate-300"
-                            }`}
-                            onMouseEnter={() => setSelectedVertexId(v.id)}
-                            onMouseLeave={() => setSelectedVertexId(null)}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+                      {/* Table Left: Point details & X-Y Lambert Metris */}
+                      <div className="bg-slate-800/60 border border-slate-700/60 p-5 rounded-xl flex flex-col gap-4">
+                        <div className="flex items-center justify-between border-b border-slate-700 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <Table className="w-4 h-4 text-amber-400" />
+                            <h3 className="text-[12px] font-bold text-slate-100 uppercase tracking-wider font-sans">
+                              {t.verticesTableTitle}
+                            </h3>
+                          </div>
+                          <span className="text-[9px] font-mono text-slate-500 uppercase">{lang === "ar" ? "سحب وإفلات متزامن" : "Interactive Drag Sync"}</span>
+                        </div>
+
+                        <div className="overflow-x-auto max-h-[220px]">
+                          <table className="w-full text-left bg-slate-900 p-1.5 rounded border border-slate-800/80 font-mono text-xs">
+                            <thead>
+                              <tr className="bg-slate-850/50 text-slate-400 border-b border-slate-700 font-sans">
+                                <th className="px-3 py-2 text-center">{t.thVertexName}</th>
+                                <th className="px-3 py-2 text-right">{lang === "ar" ? "إحداثي لومبرت X (م)" : "Raw X (m)"}</th>
+                                <th className="px-3 py-2 text-right">{lang === "ar" ? "إحداثي لومبرت Y (م)" : "Raw Y (m)"}</th>
+                                <th className="px-3 py-2 text-center">{lang === "ar" ? "حذف" : "Retirer"}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800/50">
+                              {p.vertices.map((v) => {
+                                const isHighlight = selectedVertexId === v.id;
+                                return (
+                                  <tr
+                                    key={v.id}
+                                    className={`transition-colors whitespace-nowrap ${
+                                      isHighlight ? "bg-red-950/45 text-[#fff]" : "hover:bg-slate-800/30 text-slate-300"
+                                    }`}
+                                    onMouseEnter={() => setSelectedVertexId(v.id)}
+                                    onMouseLeave={() => setSelectedVertexId(null)}
+                                  >
+                                    <td className="px-3 py-2 text-center font-bold text-amber-400">{v.label}</td>
+                                    <td className="px-3 py-2">
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={v.x}
+                                        onChange={(e) => handleVertexUpdate(v.id, parseFloat(e.target.value) || 0, v.y, p.id)}
+                                        className="bg-slate-950 border border-slate-700/50 hover:border-slate-600 focus:border-emerald-500 focus:outline-none w-full text-right px-2 py-1.5 rounded text-xs font-bold font-mono text-slate-200"
+                                      />
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={v.y}
+                                        onChange={(e) => handleVertexUpdate(v.id, v.x, parseFloat(e.target.value) || 0, p.id)}
+                                        className="bg-slate-950 border border-slate-700/50 hover:border-slate-600 focus:border-emerald-500 focus:outline-none w-full text-right px-2 py-1.5 rounded text-xs font-bold font-mono text-slate-200"
+                                      />
+                                    </td>
+                                    <td className="px-3 py-2 text-center">
+                                      <button
+                                        onClick={() => handleDeleteVertex(v.id, p.id)}
+                                        className="text-slate-500 hover:text-red-400 p-1 rounded-md transition"
+                                        title={lang === "ar" ? "حذف نقطة الحدود هذه" : "Supprimer ce point de borne d'angle"}
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Add vertex inline submit bar */}
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            const xVal = parseFloat(pNewVertex.x);
+                            const yVal = parseFloat(pNewVertex.y);
+                            if (isNaN(xVal) || isNaN(yVal)) {
+                              alert("Veuillez saisir des coordonnées numériques valides.");
+                              return;
+                            }
+                            handleAddVertex(xVal, yVal, undefined, p.id);
+                            setNewVertices(prev => ({
+                              ...prev,
+                              [p.id]: { x: "", y: "" }
+                            }));
+                          }}
+                          className="mt-2 grid grid-cols-12 gap-2 border-t border-slate-700/40 pt-3"
+                        >
+                          <label className="col-span-12 text-[9px] text-slate-400 uppercase tracking-wider font-sans">
+                            {lang === "ar" ? "إضافة نقطة زاوية جديدة للمضلع :" : "Ajouter Sommet aux Bornes existantes :"}
+                          </label>
+                          <div className="col-span-5">
+                            <input
+                              type="number"
+                              step="0.01"
+                              required
+                              placeholder={lang === "ar" ? "الإحداثي X" : "Coordonnée X"}
+                              value={pNewVertex.x}
+                              onChange={(e) => setNewVertices(prev => ({
+                                ...prev,
+                                [p.id]: { ...pNewVertex, x: e.target.value }
+                              }))}
+                              className="bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 w-full text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            />
+                          </div>
+                          <div className="col-span-5">
+                            <input
+                              type="number"
+                              step="0.01"
+                              required
+                              placeholder={lang === "ar" ? "الإحداثي Y" : "Coordonnée Y"}
+                              value={pNewVertex.y}
+                              onChange={(e) => setNewVertices(prev => ({
+                                ...prev,
+                                [p.id]: { ...pNewVertex, y: e.target.value }
+                              }))}
+                              className="bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 w-full text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            />
+                          </div>
+                          <button
+                            type="submit"
+                            className="col-span-2 bg-emerald-800 hover:bg-emerald-700 rounded text-white flex items-center justify-center transition"
+                            title={t.addVertexBtn}
                           >
-                            <td className="px-3 py-2 text-center font-bold text-amber-400">{v.label}</td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={v.x}
-                                onChange={(e) => handleVertexUpdate(v.id, parseFloat(e.target.value) || 0, v.y)}
-                                className="bg-slate-950 border border-slate-700/50 hover:border-slate-600 focus:border-emerald-500 focus:outline-none w-full text-right px-2 py-1.5 rounded text-xs font-bold font-mono text-slate-200"
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={v.y}
-                                onChange={(e) => handleVertexUpdate(v.id, v.x, parseFloat(e.target.value) || 0)}
-                                className="bg-slate-950 border border-slate-700/50 hover:border-slate-600 focus:border-emerald-500 focus:outline-none w-full text-right px-2 py-1.5 rounded text-xs font-bold font-mono text-slate-200"
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              <button
-                                onClick={() => handleDeleteVertex(v.id)}
-                                className="text-slate-500 hover:text-red-400 p-1 rounded-md transition"
-                                title={lang === "ar" ? "حذف نقطة الحدود هذه" : "Supprimer ce point de borne d'angle"}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                            <PlusCircle className="w-4 h-4" />
+                          </button>
+                        </form>
+                      </div>
 
-                {/* Add vertex inline submit bar */}
-                <form
-                  onSubmit={handleAddVertexSubmit}
-                  className="mt-2 grid grid-cols-12 gap-2 border-t border-slate-700/40 pt-3"
-                >
-                  <label className="col-span-12 text-[9px] text-slate-400 uppercase tracking-wider font-sans">
-                    {lang === "ar" ? "إضافة نقطة زاوية جديدة للمضلع :" : "Ajouter Sommet aux Bornes existantes :"}
-                  </label>
-                  <div className="col-span-5">
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      placeholder={lang === "ar" ? "الإحداثي X" : "Coordonnée X"}
-                      value={newVertexX}
-                      onChange={(e) => setNewVertexX(e.target.value)}
-                      className="bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 w-full text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                    />
+                      {/* Table Right: Segment ranges & Neighbor titles Alignment */}
+                      <div className="bg-slate-800/60 border border-slate-700/60 p-5 rounded-xl flex flex-col gap-4">
+                        <div className="flex items-center justify-between border-b border-slate-700 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <Layers className="w-4 h-4 text-emerald-400" />
+                            <h3 className="text-[12px] font-bold text-slate-100 uppercase tracking-wider font-sans">
+                              {t.alignmentsTableTitle}
+                            </h3>
+                          </div>
+                          <span className="text-[9px] font-mono text-slate-500 uppercase">{lang === "ar" ? "ملصقات الخريطة المطبوعة" : "Printed Map Labels"}</span>
+                        </div>
+
+                        <div className="overflow-y-auto max-h-[290px]">
+                          <table className="w-full text-left bg-slate-900 p-1.5 rounded border border-slate-800/80 text-xs">
+                            <thead>
+                              <tr className="bg-slate-850/50 text-slate-400 border-b border-slate-700 leading-none font-sans">
+                                <th className="px-3 py-2 font-mono">{t.thSegment}</th>
+                                <th className="px-3 py-2 text-right font-mono">{lang === "ar" ? "المسافة (م)" : "Distance (m)"}</th>
+                                <th className="px-3 py-2 font-sans text-right">{lang === "ar" ? "خطوط الحدود / المجاورون" : "Limite de Voisinage / Voisin"}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800/50 text-xs text-slate-300">
+                              {p.segments.map((s) => {
+                                const isHighlight = selectedSegmentId === s.id;
+                                return (
+                                  <tr
+                                    key={s.id}
+                                    className={`transition-colors whitespace-nowrap ${
+                                      isHighlight ? "bg-red-950/45 text-[#fff]" : "hover:bg-slate-800/30 text-slate-300"
+                                    }`}
+                                    onMouseEnter={() => setSelectedSegmentId(s.id)}
+                                    onMouseLeave={() => setSelectedSegmentId(null)}
+                                  >
+                                    <td className="px-3 py-2 font-bold font-mono text-amber-400 whitespace-nowrap">
+                                      {s.startLabel} - {s.endLabel}
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-mono font-bold whitespace-nowrap">
+                                      {s.length.toFixed(2)} m
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <input
+                                        type="text"
+                                        value={s.neighbor}
+                                        placeholder={t.placeholderVoisin}
+                                        onChange={(e) => handleNeighborUpdate(s.id, e.target.value, p.id)}
+                                        className="bg-slate-950 border border-slate-700/50 hover:border-slate-600 focus:border-emerald-500 focus:outline-none w-full text-left px-2 py-1.5 rounded text-xs font-semibold font-sans text-slate-200"
+                                      />
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Technical warning block */}
+                        {isPrimary && (
+                          <div className="bg-emerald-950/30 rounded-lg p-3 ring-1 ring-emerald-500/10 text-emerald-400 text-[10px] leading-relaxed select-none font-sans">
+                            {lang === "ar" ? (
+                              <span>💡 <b>معلومة ذكية :</b> يمكنك أيضاً سحب وإزاحة أي نقطة حدود حمراء مباشرة على الخريطة ! وسيتم إعادة حساب المسافات والمساحة الإجمالية تلقائياً في نفس اللحظة.</span>
+                            ) : (
+                              <span>💡 <b>Astuce pro :</b> Vous pouvez également faire glisser n'importe quelle borne d'angle directement sur le canevas de carte ci-dessus ! Les distances et la surface se recalculeront instantanément.</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="col-span-5">
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      placeholder={lang === "ar" ? "الإحداثي Y" : "Coordonnée Y"}
-                      value={newVertexY}
-                      onChange={(e) => setNewVertexY(e.target.value)}
-                      className="bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 w-full text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="col-span-2 bg-emerald-800 hover:bg-emerald-700 rounded text-white flex items-center justify-center transition"
-                    title={t.addVertexBtn}
-                  >
-                    <PlusCircle className="w-4 h-4" />
-                  </button>
-                </form>
-              </div>
-
-              {/* Table Right: Segment ranges & Neighbor titles Alignment */}
-              <div className="bg-slate-800/60 border border-slate-700/60 p-5 rounded-xl flex flex-col gap-4">
-                <div className="flex items-center justify-between border-b border-slate-700 pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-emerald-400" />
-                    <h3 className="text-[12px] font-bold text-slate-100 uppercase tracking-wider font-sans">
-                      {t.alignmentsTableTitle}
-                    </h3>
-                  </div>
-                  <span className="text-[9px] font-mono text-slate-500 uppercase">{lang === "ar" ? "ملصقات الخريطة المطبوعة" : "Printed Map Labels"}</span>
-                </div>
-
-                <div className="overflow-y-auto max-h-[290px]">
-                  <table className="w-full text-left bg-slate-900 p-1.5 rounded border border-slate-800/80 text-xs">
-                    <thead>
-                      <tr className="bg-slate-850/50 text-slate-400 border-b border-slate-700 leading-none font-sans">
-                        <th className="px-3 py-2 font-mono">{t.thSegment}</th>
-                        <th className="px-3 py-2 text-right font-mono">{lang === "ar" ? "المسافة (م)" : "Distance (m)"}</th>
-                        <th className="px-3 py-2 font-sans text-right">{lang === "ar" ? "خطوط الحدود / المجاورون" : "Limite de Voisinage / Voisin"}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50 text-xs text-slate-300">
-                      {activeParcel.segments.map((s) => {
-                        const isHighlight = selectedSegmentId === s.id;
-                        return (
-                          <tr
-                            key={s.id}
-                            className={`transition-colors whitespace-nowrap ${
-                              isHighlight ? "bg-red-950/45 text-[#fff]" : "hover:bg-slate-800/30 text-slate-300"
-                            }`}
-                            onMouseEnter={() => setSelectedSegmentId(s.id)}
-                            onMouseLeave={() => setSelectedSegmentId(null)}
-                          >
-                            <td className="px-3 py-2 font-bold font-mono text-amber-400 whitespace-nowrap">
-                              {s.startLabel} - {s.endLabel}
-                            </td>
-                            <td className="px-3 py-2 text-right font-mono font-bold whitespace-nowrap">
-                              {s.length.toFixed(2)} m
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="text"
-                                value={s.neighbor}
-                                placeholder={t.placeholderVoisin}
-                                onChange={(e) => handleNeighborUpdate(s.id, e.target.value)}
-                                className="bg-slate-950 border border-slate-700/50 hover:border-slate-600 focus:border-emerald-500 focus:outline-none w-full text-left px-2 py-1.5 rounded text-xs font-semibold font-sans text-slate-200"
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Technical warning block */}
-                <div className="bg-emerald-950/30 rounded-lg p-3 ring-1 ring-emerald-500/10 text-emerald-400 text-[10px] leading-relaxed select-none font-sans">
-                  {lang === "ar" ? (
-                    <span>💡 <b>معلومة ذكية :</b> يمكنك أيضاً سحب وإزاحة أي نقطة حدود حمراء مباشرة على الخريطة ! وسيتم إعادة حساب المسافات والمساحة الإجمالية تلقائياً في نفس اللحظة.</span>
-                  ) : (
-                    <span>💡 <b>Astuce pro :</b> Vous pouvez également faire glisser n'importe quelle borne d'angle directement sur le canevas de carte ci-dessus ! Les distances et la surface se recalculeront instantanément.</span>
-                  )}
-                </div>
-              </div>
+                );
+              })}
             </div>
           </section>
         </main>
