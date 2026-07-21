@@ -26,11 +26,12 @@ import { SecretStatsPanel } from "./SecretStatsPanel";
 
 interface AboutPageProps {
   onBack: () => void;
-  lang: "ar" | "fr";
+  lang: "ar" | "fr" | "en";
 }
 
 export function AboutPage({ onBack, lang }: AboutPageProps) {
   const isAr = lang === "ar";
+  const isEn = lang === "en";
   const [showStats, setShowStats] = useState(false);
   const [clickCount, setClickCount] = useState(0);
   const [isLoadingGeo, setIsLoadingGeo] = useState(false);
@@ -99,7 +100,7 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
     };
 
     fetchGeo();
-  }, [isAr]);
+  }, [isAr, isEn]);
 
   const handleVersionClick = () => {
     setClickCount(prev => {
@@ -108,7 +109,9 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
         setShowStats(true);
         alert(isAr 
           ? "🔓 تم تفعيل لوحة الإحصائيات السرية للموقع بنجاح! ستجدها الآن في أسفل الصفحة." 
-          : "🔓 Le tableau des statistiques secrètes du site a été activé avec succès ! Faites défiler vers le bas."
+          : isEn
+            ? "🔓 The secret site statistics panel has been activated successfully! Scroll down to view."
+            : "🔓 Le tableau des statistiques secrètes du site a été activé avec succès ! Faites défiler vers le bas."
         );
         return 0;
       }
@@ -125,7 +128,7 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
           className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-bold transition text-amber-500 shadow-sm"
         >
           <ArrowLeft className={`w-4 h-4 ${isAr ? "rotate-180" : ""}`} />
-          <span>{isAr ? "العودة إلى المحرر" : "Retour à l'éditeur"}</span>
+          <span>{isAr ? "العودة إلى المحرر" : isEn ? "Back to Editor" : "Retour à l'éditeur"}</span>
         </button>
       </div>
 
@@ -153,14 +156,14 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
           {/* Developer Stamp */}
           <div className="mt-8 p-4 bg-slate-900/50 border border-slate-700/60 rounded-2xl max-w-md w-full">
             <p className="text-stone-400 text-xs uppercase tracking-widest font-mono mb-1">
-              {isAr ? "تطوير وإعداد" : "Développé par"}
+              {isAr ? "تطوير وإعداد" : isEn ? "Developed by" : "Développé par"}
             </p>
             <p className="text-xl font-extrabold text-indigo-400 tracking-wide">
               Abdellah Ouaddou
             </p>
             <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider mt-1.5 flex items-center justify-center gap-1">
               <Award className="w-3.5 h-3.5" />
-              <span>Ingénieur de Conception Topographique</span>
+              <span>{isAr ? "مهندس الطبوغرافيا ونظم المعلومات الجغرافية" : isEn ? "Topographic & GIS Engineer" : "Ingénieur Géomètre Topographe"}</span>
             </p>
           </div>
 
@@ -178,7 +181,9 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
             <p className="text-[11px] text-slate-400 mt-2.5 font-medium leading-relaxed">
               {isAr 
                 ? "اشترك في القناة التعليمية TopoGis4you لمتابعة شروحات الهندسة الطبوغرافية ونظم المعلومات الجغرافية"
-                : "Abonnez-vous à la chaîne pour des tutoriels experts en topographie et systèmes d'information géographique (SIG)"
+                : isEn
+                  ? "Subscribe to our TopoGis4you channel for top-notch topographic engineering and GIS tutorials"
+                  : "Abonnez-vous à la chaîne pour des tutoriels experts en topographie et systèmes d'information géographique (SIG)"
               }
             </p>
           </div>
@@ -192,7 +197,7 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
           <div>
             <h3 className="text-sm font-black text-amber-400 uppercase tracking-wider mb-4 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
-              <span>{isAr ? "وظائف البرنامج الرئيسية" : "Fonctionnalités Clés"}</span>
+              <span>{isAr ? "وظائف البرنامج الرئيسية" : isEn ? "Core Features" : "Fonctionnalités Clés"}</span>
             </h3>
             <ul className="space-y-3.5 text-xs text-slate-300">
               <li className="flex items-start gap-2.5">
@@ -200,7 +205,9 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
                 <span>
                   {isAr 
                     ? "إسقاط طبوغرافي دقيق بأنظمة Lambert بمختلف المناطق المغربية ومستشعرات ذكية."
-                    : "Projection cartographique précise (SFC / Maroc Lambert, zones I, II, III, IV)."
+                    : isEn
+                      ? "Accurate geographic projection (SFC / Morocco Lambert Zone I, II, III, IV)."
+                      : "Projection cartographique précise (SFC / Maroc Lambert, zones I, II, III, IV)."
                   }
                 </span>
               </li>
@@ -209,7 +216,9 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
                 <span>
                   {isAr 
                     ? "استيراد ملفات الرفع الطبوغرافية بمختلف الصيغ (KML, GPX, DXF, GeoJSON, Excel, CSV)."
-                    : "Importation universelle de fichiers de levé topographique (KML, DXF, GeoJSON, Excel...)."
+                    : isEn
+                      ? "Universal import of topograhic survey files (KML, DXF, GPX, GeoJSON, Excel, CSV)."
+                      : "Importation universelle de fichiers de levé topographique (KML, DXF, GeoJSON, Excel...)."
                   }
                 </span>
               </li>
@@ -218,7 +227,9 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
                 <span>
                   {isAr 
                     ? "إنشاء متزامن لجدول نقط الحدود و أطوال الأضلاع والمجاورين بطرق ديناميكية."
-                    : "Synchronisation dynamique des coordonnées, gisements, distances et voisins."
+                    : isEn
+                      ? "Dynamic synchronization of boundary coordinates, bearings, distances, and neighboring boundaries."
+                      : "Synchronisation dynamique des coordonnées, gisements, distances et voisins."
                   }
                 </span>
               </li>
@@ -227,7 +238,9 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
                 <span>
                   {isAr 
                     ? "توليد ملف تقني للطباعة الفورية بصفحتين بمقاييس رسم مخصصة وقوالب المحافظة العقارية."
-                    : "Production d'un dossier technique d'impression de deux pages avec échelle adaptable."
+                    : isEn
+                      ? "Two-page professional print dossier output with custom scale options and land registry templates."
+                      : "Production d'un dossier technique d'impression de deux pages avec échelle adaptable."
                   }
                 </span>
               </li>
@@ -240,13 +253,15 @@ export function AboutPage({ onBack, lang }: AboutPageProps) {
           <div>
             <h3 className="text-sm font-black text-indigo-400 uppercase tracking-wider mb-4 flex items-center gap-2">
               <Shield className="w-4 h-4 text-indigo-400" />
-              <span>{isAr ? "الحقوق والتراخيص" : "Droits & Informations"}</span>
+              <span>{isAr ? "الحقوق والتراخيص" : isEn ? "Copyrights & Info" : "Droits & Informations"}</span>
             </h3>
             <div className="text-xs text-slate-300 space-y-3 leading-relaxed">
               <p>
                 {isAr
                   ? "تم تصميم هذا المخطط لمساعدة المهندسين الطبوغرافيين في تسريع دمج البيانات ومراجعتها ومطابقتها وتوليد مستندات الطباعة الرسمية."
-                  : "Conçu pour assister les ingénieurs géomètres topographes dans l'analyse, la mise en conformité et la génération de livrables professionnels."
+                  : isEn
+                    ? "Designed to assist topo-geodetic engineers in rapid data merging, conformity checks, and official print deliverable generation."
+                    : "Conçu pour assister les ingénieurs géomètres topographes dans l'analyse, la mise en conformité et la génération de livrables professionnels."
                 }
               </p>
               <div className="pt-2 border-t border-slate-700/60 space-y-1.5 font-mono text-[11px] text-slate-400">

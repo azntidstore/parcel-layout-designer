@@ -40,7 +40,7 @@ export interface TranslationSet {
   placeholderVoisin: string;
 }
 
-export const translations: Record<"ar" | "fr", TranslationSet> = {
+export const translations: Record<"ar" | "fr" | "en", TranslationSet> = {
   ar: {
     appTitle: "مخطط تصميم القطع الأرضية",
     appSubtitle: "Éditeur de levé Topographique",
@@ -122,5 +122,67 @@ export const translations: Record<"ar" | "fr", TranslationSet> = {
     helpTitle: "Présentation & Aide Tactile",
     helpBody: "Cette plateforme interactive vous permet de glisser et déplacer les bornes et d'éditer les longueurs directement sur la carte. Le tableau des coordonnées et les données se synchronisent automatiquement avant l'impression finale.",
     placeholderVoisin: "écrire le voisin (ex: Route, Titre...)"
+  },
+  en: {
+    appTitle: "PARCEL LAYOUT DESIGNER",
+    appSubtitle: "Topographic Survey Editor",
+    version: "V1.1 PRO",
+    newPlanBtn: "New Plan",
+    editMapBtn: "Map Editor",
+    printBtn: "Technical File (Print)",
+    crsConfigTitle: "File Settings / CRS System (Projection)",
+    crsActiveLabel: "Active Coordinate Reference System (Projection)",
+    crsActiveHelp: "All parcels and exports will be automatically converted to this official local projection.",
+    importPanelTitle: "Import Data (CADGIS, TAB, MAP, DAT, MBX, MIF, DXF, CSV, ZIP)",
+    importHelpLine1: "Drag & drop CAD/GIS files here (select MAP+TAB+DAT+MBX together or a ZIP archive)",
+    importHelpLine2: "Import multi-format topographic surveys:",
+    importSuccess: "Import successful!",
+    importFile: "File:",
+    importType: "Format:",
+    importSourceCrs: "Define file original CRS (Source CRS):",
+    importAdoptName: "Adopt parcel name from attribute table (Entire file):",
+    importChooseColumn: "-- Choose name column --",
+    parcelDetailsTitle: "Parcel Identification & Info",
+    parcelNameLabel: "Parcel Name",
+    contenanceLabel: "Total Area",
+    perimetreLabel: "Perimeter",
+    adoptNameFromTableBtn: "Adopt parcel name (Column)",
+    verticesTableTitle: "Vertex List / Coordinates (X,Y)",
+    thVertexName: "Vertex",
+    thVoisin: "Boundaries / Bearings",
+    thAngle: "Angle (°)",
+    thLongueur: "Distance (m)",
+    thActions: "Actions",
+    addVertexTitle: "Add new point to polygon",
+    addVertexX: "X Coordinate (East)",
+    addVertexY: "Y Coordinate (North)",
+    addVertexBtn: "Add Vertex",
+    alignmentsTableTitle: "Table of Alignments",
+    thSegment: "Segment",
+    thDistance: "Length",
+    helpTitle: "Interactive Help & Guidance",
+    helpBody: "This interactive platform allows you to drag and move boundary markers and edit lengths directly on the map. The coordinate table and data synchronize automatically in real-time before final printing.",
+    placeholderVoisin: "Write neighbor (e.g. Road, Title...)"
   }
 };
+
+export function l3(lang: "ar" | "fr" | "en", ar: string, fr: string, en?: string): string {
+  if (lang === "ar") return ar;
+  if (lang === "en") return en || fr;
+  return fr;
+}
+
+export function getLocalizedParcelName(parcel: { id?: string; name: string }, lang: string): string {
+  if (
+    parcel.id === "parcelle-par-defaut" ||
+    parcel.name.includes("المضلع الافتراضي") ||
+    parcel.name.includes("Polygone par défaut") ||
+    parcel.name.includes("Default Polygon")
+  ) {
+    if (lang === "ar") return "المضلع الافتراضي (EPSG:26191)";
+    if (lang === "en") return "Default Polygon (EPSG:26191)";
+    return "Polygone par défaut (EPSG:26191)";
+  }
+  return parcel.name;
+}
+

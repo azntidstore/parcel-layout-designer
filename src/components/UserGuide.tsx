@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   BookOpen, 
   Search, 
@@ -26,15 +26,20 @@ import {
 } from "lucide-react";
 
 interface UserGuideProps {
-  lang: "ar" | "fr";
+  lang: "ar" | "fr" | "en";
 }
 
 export function UserGuide({ lang: initialLang }: UserGuideProps) {
-  const [guideLang, setGuideLang] = useState<"ar" | "fr">(initialLang);
+  const [guideLang, setGuideLang] = useState<"ar" | "fr" | "en">(initialLang);
   const [activeTab, setActiveTab] = useState<"visual" | "detailed">("visual");
   const [searchQuery, setSearchQuery] = useState("");
 
+  useEffect(() => {
+    setGuideLang(initialLang);
+  }, [initialLang]);
+
   const isAr = guideLang === "ar";
+  const isEn = guideLang === "en";
 
   const sectionsAr = [
     {
@@ -87,8 +92,9 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
 • التحكم في حجم الخط والمسافات (Font & Offset): تمنحك اللوحة الجانبية إمكانية التحكم الدقيق عبر مؤشرات سحب تفاعلية في:
   1. حجم خط كتابة النقط (القمم) على المخطط والخريطة.
   2. حجم خط كتابة المسافات والتعليقات والحدود والمجاورين.
-  3. المسافة الفاصلة (Offset) بين كتابة المسافات/التعليقات والضلع المقابل لها لتفادي تداخل النصوص وتحقيق وضوح هندسي تام.
-• فواصل شبكة الإحداثيات: اضبط فاصل الشبكة بالمتر (مثلاً: 50م، 100م) للتحكم بكثافة خطوط الإحداثيات المتراكبة.`
+  3. المسافة الفاصلة (Offset) بين كتابة المسافات/التعليقات والضلع المقابل لها لتفادي تداخل النصوص وتحقيق وضوح هندسي تام على المخطط الفني.
+• فواصل شبكة الإحداثيات: اضبط فاصل الشبكة بالمتر (مثلاً: 50م، 100م) للتحكم بكثافة خطوط الإحداثيات المتراكبة.
+• مفتاح الخريطة الديناميكي (Légende): يتيح لك النظام الجديد تخصيص مفتاح الخريطة بالكامل. يمكنك إظهار أو إخفاء حدود القطعة، الخطوط الطبوغرافية (مثل الطرق والمسالك وقنوات المياه والكهرباء)، والرموز والظواهر الجغرافية (مثل الأشجار، الآبار، البنايات، المساجد، والمحولات الكهربائية). كما يمكنك تعديل مسميات هذه العناصر وتغيير موضع المفتاح (أعلى اليسار، أعلى اليمين، أسفل اليسار، أسفل اليمين) أو إلغاء تفعيله بالكامل ليناسب إخراجك الهندسي.`
     },
     {
       id: "print_choice",
@@ -161,7 +167,8 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
   1. Taille de police des sommets pour augmenter/diminuer la visibilité des noms des points.
   2. Taille de police des étiquettes pour les longueurs des côtés et les noms des riverains.
   3. Distance de décalage (Offset) des étiquettes par rapport aux segments de limites pour éviter les superpositions d'écritures et aérer votre plan technique.
-• Maillage des Coordonnées : Ajustez l'intervalle de la grille en mètres (Grille) pour adapter le quadrillage (carroyage) sur le plan.`
+• Maillage des Coordonnées : Ajustez l'intervalle de la grille en mètres (Grille) pour adapter le quadrillage (carroyage) sur le plan.
+• Légende Cartographique Dynamique : Le nouveau système vous offre un contrôle absolu sur la légende du plan. Vous pouvez activer ou désactiver l'affichage de la légende, choisir sa position sur la carte (en haut à gauche, en haut à droite, en bas à gauche, en bas à droite) et personnaliser les libellés de chaque symbole (arbres, puits, bâtiments, mosquées, oliviers, etc.) et ligne (sentiers, conduites d'eau, lignes électriques, etc.) en trois langues.`
     },
     {
       id: "print_choice",
@@ -183,65 +190,154 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
     }
   ];
 
-  // Expanded Visual Step-by-Step with precise interactive mockup representations
+  const sectionsEn = [
+    {
+      id: "intro",
+      title: "1. Global Introduction & Application Architecture",
+      icon: <Info className="w-5 h-5 text-indigo-400" />,
+      content: "The Parcel Layout Designer application is an advanced SaaS platform tailored for Surveyors and Topographic Engineers (IGT) to design technical files and land boundary plans compliant with ANCFCC administrative standards. The app seamlessly integrates an interactive real-time geometric editor, an active map-rendering simulator, and an automated studio for printing high-quality A4 document files."
+    },
+    {
+      id: "live_preview",
+      title: "2. Live Map Preview & Vertex Dragging Engine",
+      icon: <Eye className="w-5 h-5 text-emerald-400" />,
+      content: `The interactive live map preview offers advanced features:
+• Instantly locate your parcel geographically on high-resolution aerial imagery (Orthophotoplan).
+• Use mouse Drag-and-Drop to move boundary vertices directly on the map to adjust coordinates visually.
+• Coordinates (X, Y), total area, and perimeter update automatically in real-time as you drag any point.
+• Toggle map layers from the bottom selector: satellite imagery hybrid, vector road map, or a clean white engineering canvas.`
+    },
+    {
+      id: "modify_drawing",
+      title: "3. Modifying Layout & Adding New Points",
+      icon: <PlusCircle className="w-5 h-5 text-amber-400" />,
+      content: `You have full control over the boundary polygon with two editing workflows:
+• Direct Numerical Editing: In the lateral 'Vertex Coordinates List', click any coordinate field (Est-X, Nord-Y, Altitude-Z) to enter numeric values directly with absolute geodesic accuracy.
+• Inserting New Vertices:
+  1. Navigate to the 'Add Point to Polygon' form under the coordinates table.
+  2. Input the East (X) and North (Y) plane coordinates, plus the elevation (Z).
+  3. Click 'Add Vertex' to append the point to the polygon and automatically update the parcel area.
+• Deleting Vertices: Remove unnecessary points by clicking the red trash can icon next to any vertex in the table.`
+    },
+    {
+      id: "import_data",
+      title: "4. Digital Topographic Survey Importation",
+      icon: <UploadCloud className="w-5 h-5 text-sky-400" />,
+      content: `The app supports importing raw field survey files with extreme ease:
+• Supported formats: AutoCAD DXF (lines or points), Google Earth KML/KMZ, GPX tracker logs, Excel spreadsheets (.xlsx), and raw CSV files.
+• Specify the Source CRS (Coordinate Reference System) of your file to ensure proper spatial alignment.
+• The system automatically detects closed loops, traces them on the map, and populates the coordinates table.
+• Attribute Column Mapping: Choose which data column in your spreadsheet should be imported as the official vertex name.`
+    },
+    {
+      id: "layout_setup",
+      title: "5. Layout Configuration, Attributes & Customized Typography",
+      icon: <Settings className="w-5 h-5 text-blue-400" />,
+      content: `Configure the layout header, dynamic legend, and fine-tune labels from the sidebar controls:
+• Administrative Metadata: Fill in file details like Technical Dossier Number, Owner's Name, Province/Prefecture, Municipality, and Locality.
+• Scale Selection: Choose automatic scale calculation to perfectly fit the A4 page, or specify a standard manual scale to follow rigid drawing rules.
+• Neighbors & Boundaries: Enter names of neighboring owners along each boundary segment so they appear aligned on the map and in the boundaries list.
+• Vertex Prefix Customization: Select how vertices are named: standard letter P, B (Borne), raw numbers (no prefix), or a custom text prefix (like T or S) which updates all views instantly.
+• Advanced Font & Offset Control: Use the sidebar sliders to control:
+  1. Font size of vertex labels on both map layouts and print sheets.
+  2. Font size of boundary segment labels (lengths and neighbors).
+  3. Text Distance Offset: Control the spacing between segment length labels and the boundary line to prevent overlap and ensure absolute plan legibility.
+• Coordinate Grid Spacing: Adjust the coordinate grid lines interval in meters (e.g., 50m, 100m) to control grid density.`
+    },
+    {
+      id: "print_choice",
+      title: "6. Print Formats & PDF Exporting Guidance",
+      icon: <Printer className="w-5 h-5 text-rose-500" />,
+      content: `We consolidated print formats and layouts into a single interactive print preview playground:
+• Mode 'Print with Cover Page' (Format 1):
+  - Generates a comprehensive 2-page A4 administrative dossier.
+  - Page 1: Official cover sheet containing administrative metadata, a full table of coordinates with elevation, and a cropped orthophoto view with an optional red 'Project Arrow' indicator.
+  - Page 2: Scaled technical plan featuring the coordinate grid, a north arrow, and the boundaries/neighbors table.
+
+• Mode 'Print without Cover Page' (Format 2):
+  - Produces a single-page landscape 'Plan Parcellaire' tailored solely for drawing details.
+  - Features a prominent 'PLAN PARCELLAIRE' title, and a traditional Moroccan area badge at the bottom of the map dividing the total area into Hectares, Ares, and Centiares (e.g., SURFACE: 1 H . 24 A . 15 Ca).
+
+• Dynamic Map Legend:
+  - Full control over the map legend. You can enable or disable the legend box, select its position on the plan (top-left, top-right, bottom-left, bottom-right), toggle visibility of individual elements (boundary lines, paths, water/sewer pipelines, power lines, and symbols like trees, wells, buildings, mosques, oliviers), and edit labels in Arabic, French, and English to match your project needs.
+
+• Best Browser Settings for PDF Saving:
+  - Click the 'Print / Generate PDF' button.
+  - In your browser's print options dialog, ensure 'Background graphics' is SELECTED (crucial for map colors and satellite imagery) and 'Headers and footers' is DESELECTED.`
+    }
+  ];
+
+  // Detailed Written Technical Guide - Replaces simple step-by-step
   const visualSteps = [
     {
       step: "1",
-      titleAr: "المعاينة الحية وتحريك نقاط الحدود",
-      titleFr: "Aperçu en direct & Déplacement des points",
-      descAr: "عاين القطعة الأرضية فوق الصور الجوية مباشرة. يمكنك سحب أي نقطة حدود بالفأرة وتغيير موقعها، وسيتم تعديل الإحداثيات والمساحة الإجمالية في نفس اللحظة.",
-      descFr: "Visualisez la parcelle directement sur l'imagerie satellite. Glissez n'importe quel sommet avec la souris : les coordonnées et la surface se mettent à jour instantanément.",
-      captureType: "live_preview_mock",
+      titleAr: "استيراد البيانات والامتدادات المدعومة",
+      titleFr: "Importation des Données & Extensions Supportées",
+      titleEn: "Data Importation & Supported File Extensions",
+      descAr: "يدعم التطبيق استيراد الرفع الطبوغرافي الرقمي لتوفير الوقت والجهد وتجنب الأخطاء اليدوية. يتم قبول الامتدادات والملفات التالية بسعة أقصاها 15 ميجابايت:\n• DXF (AutoCAD): استيراد مضلعات ورؤوس الرفع الطبوغرافي المصممة على برامج أوتوكاد.\n• KML / KMZ (Google Earth): للمضلعات والمسارات الجغرافية والموقعة حركياً.\n• GPX: ملفات مسارات وأجهزة الاستقبال ونقاط تحديد المواقع GPS.\n• GeoJSON / JSON: لتنسيقات نظم المعلومات الجغرافية ونقاطها الهندسية المرجعية.\n• CSV / TXT / Excel (.xlsx, .xls): لجداول النقاط الرقمية المتسلسلة والمجدولة هندسياً.",
+      descFr: "L'application prend en charge l'importation directe de vos données de terrain pour accélérer le traitement et éliminer les erreurs de saisie manuelle. Les extensions acceptées (taille max 15 Mo) sont :\n• DXF (AutoCAD) : Extraction automatique de polylignes ou points fermés.\n• KML / KMZ (Google Earth) : Import de polygones géo-référencés.\n• GPX : Tracés GPS de terrain et points d'arpentage.\n• GeoJSON / JSON : Format structuré de données géospatiales.\n• Excel (.xlsx, .xls) & CSV : Tableaux ordonnés de coordonnées de sommets.",
+      descEn: "The application supports direct importing of digital field survey data to speed up processing and prevent manual entry errors. The following extensions are accepted (max size 15MB):\n• DXF (AutoCAD): Automatically extracts boundary polylines or points.\n• KML / KMZ (Google Earth): Imports spatial boundary polygons directly.\n• GPX: Captures tracks and markers from handheld GPS or receivers.\n• GeoJSON / JSON: Handles standard structured geospatial files.\n• Excel (.xlsx, .xls) & CSV: For ordered coordinate sheets of vertices.",
+      captureType: "file_import_mock",
       badgeColor: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
     },
     {
       step: "2",
-      titleAr: "تعديل المضلع يدوياً وإضافة نقطة",
-      titleFr: "Modification manuelle & Ajout de point",
-      descAr: "اضغط على أي حقل إحداثي (Est / Nord) لتعديل قيمته بدقة هندسية، أو أدخل إحداثيات نقطة جديدة في حقول الإضافة السريعة لتوسيع مضلع القطعة.",
-      descFr: "Cliquez sur une coordonnée (Est / Nord) pour modifier sa valeur numérique, ou utilisez les champs d'ajout rapide pour insérer de nouveaux sommets au tracé.",
-      captureType: "add_point_mock",
-      badgeColor: "bg-amber-500/10 text-amber-400 border-amber-500/20"
-    },
-    {
-      step: "3",
-      titleAr: "تخصيص تسميات النقط والكتابة على الخريطة",
-      titleFr: "Personnalisation des Sommets & Textes",
-      descAr: "اختر بادئة تسمية النقط (P, B، بادئة مخصصة، أو أرقام فقط)، وتحكم بحجم خط كتابة القمم، حجم خط الأطوال والمجاورين، ومسافة تباعدها (Offset) عن الأضلاع لتجنب تداخل النصوص.",
-      descFr: "Configurez le préfixe des sommets (P, B, personnalisé, ou chiffres seuls), ajustez la taille des polices des points/étiquettes et la distance de décalage (Offset) pour éviter les superpositions.",
-      captureType: "scale_labels_mock",
-      badgeColor: "bg-blue-500/10 text-blue-400 border-blue-500/20"
-    },
-    {
-      step: "4",
-      titleAr: "الطباعة مرفوقة بصفحة الغلاف",
-      titleFr: "Impression avec page de garde",
-      descAr: "النمط الأول: يولد ملفاً متكاملاً من صفحتين بحجم A4. صفحة غلاف رسمية تشمل جدول الإحداثيات وخريطة Orthophotoplan، تليها صفحة المخطط الطبوغرافي الشامل.",
-      descFr: "Option 1 : Dossier technique de 2 pages A4. Page 1 : Page de garde officielle avec tableau des sommets et orthophotoplan. Page 2 : Plan de délimitation à l'échelle.",
-      captureType: "with_cover_mock",
+      titleAr: "شروط وصيغة ملفات إكسيل (Excel) وإكسل المقبولة",
+      titleFr: "Format et Structure Acceptée des Fichiers Excel/CSV",
+      titleEn: "Accepted Excel & CSV Column Structure",
+      descAr: "لنجاح عملية استيراد جداول الإكسل والـ CSV، يدعم البرنامج تنسيقين أساسيين:\n1. التنسيق المتسلسل (العمود الموحد) : عمود واحد يحتوي على الاسم والإحداثيات مفصولة برمز '|' أو ';' (مثل: P1;315482.40;284195.12).\n2. التنسيق الجدولى الكلاسيكي (الأعمدة المستقلة) : يجب أن يحتوي السطر الأول (ضمن الأسطر الـ5 الأولى) على العناوين التالية للتعرف عليها تلقائياً:\n• الإحداثي الشرقي (X / Est): يحمل اسماً مثل: X, Est, East, Easting, coord_x, Longitude, Lng.\n• الإحداثي الشمالي (Y / Nord): يحمل اسماً مثل: Y, Nord, North, Northing, coord_y, Latitude, Lat.\n• الاسم (Nom / Point): يحمل اسماً مثل: Nom, Name, label, id, point, No, n°.\n• المجموعة (Parcelle / Group) اختياري لفصل القطع: Parcelle, parcel, group, poly.",
+      descFr: "Pour un chargement sans faille de vos fichiers tableurs, le système valide deux gabarits :\n1. Format brute en une colonne (Pipe / Point-virgule) : Une cellule unique contenant 'Nom;Est;Nord' (ex: P1;315482.40;284195.12).\n2. Format tabulaire multi-colonnes (Recommandé) : Une ligne d'en-tête (dans les 5 premières lignes) contenant :\n• Est (X) : Colonne nommée X, Est, East, Easting, coord_x, Longitude, Lng ou Long.\n• Nord (Y) : Colonne nommée Y, Nord, North, Northing, coord_y, Latitude, Lat.\n• Nom (Sommet) : Colonne nommée Nom, Name, label, id, point, No, n°.\n• Groupe (Optionnel pour séparer plusieurs parcelles) : Parcelle, parcel, group, poly.",
+      descEn: "To ensure successful reading of your spreadsheet data, the importer validates two specific formats:\n1. Single Column Format (Semicolon/Pipe Delimited): A single cell with name and coords (e.g. P1;315482.40;284195.12).\n2. Standard Multi-Column Format (Recommended): Header row within the first 5 lines containing:\n• Easting (X): Labeled X, Est, East, Easting, coord_x, Longitude, Lng, or Long.\n• Northing (Y): Labeled Y, Nord, North, Northing, coord_y, Latitude, Lat.\n• Point Name: Labeled Nom, Name, label, id, point, No, n°.\n• Parcel Group: (Optional for files containing multiple parcels) Labeled Parcelle, parcel, group, poly.",
+      captureType: "excel_schema_mock",
       badgeColor: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
     },
     {
+      step: "3",
+      titleAr: "التعديلات الديناميكية وتحريك نقاط الحدود",
+      titleFr: "Édition Cartographique & Correction Dynamique",
+      titleEn: "Interactive Map Editing & Polygon Tweaks",
+      descAr: "يوفر التطبيق خريطة تفاعلية نشطة تمنحك تحكماً هندسياً وموقعياً كاملاً عبر ثلاث طرق متكاملة:\n• سحب وإفلات علامات الحدود (Drag & Drop): يمكنك الإمساك بأي نقطة حدود متموضعة على الصور الجوية وتعديل موقعها بالفأرة. يتم تحديث جدول الإحداثيات (X,Y) والمساحة والمحيط بشكل فوري وتزامني.\n• التحديث الرقمي الدقيق: اضغط يدوياً على أي خلية في جدول الإحداثيات باللوحة الجانبية لتغيير قيمتها بدقة مليمترية.\n• إدارة القمم: أضف رؤوساً جديدة مخصصة عبر حقول الإدخال، أو احذف أي نقطة بالضغط على زر الحذف الأحمر لإعادة تشكيل المضلع فوراً.",
+      descFr: "L'application propose un espace cartographique actif qui vous donne le plein contrôle géométrique de trois façons :\n• Déplacement dynamique (Drag & Drop) : Saisissez n'importe quel sommet sur l'imagerie satellite et ajustez sa position. Les valeurs de coordonnées X et Y, la surface et le périmètre s'adaptent instantanément.\n• Saisie de précision : Modifiez directement les chiffres de l'Est (X), du Nord (Y) ou de l'Altitude (Z) dans le tableau pour corriger l'arpentage au millimètre près.\n• Ajout et Suppression : Insérez de nouveaux sommets via le formulaire d'ajout, ou supprimez les points superflus avec le bouton rouge.",
+      descEn: "The app features an active interactive map workspace that gives you absolute geometric and spatial control in three ways:\n• Drag & Drop Vertex Markers: Click and hold any boundary point on the aerial satellite map and move it. Coordinate values, total area, and perimeter update automatically.\n• Geodetic Table Editing: Type coordinate values directly into the sidebar table to update positions with absolute precision.\n• Append & Delete: Insert new boundary vertices using the quick form below the table, or remove points with the red delete button to adjust layout instantly.",
+      captureType: "live_preview_mock",
+      badgeColor: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+    },
+    {
+      step: "4",
+      titleAr: "إعداد اللوحة وتخصيص بادئات التسمية",
+      titleFr: "Configuration de la Page & Préfixes des Sommets",
+      titleEn: "Layout Configuration & Vertex Prefixing",
+      descAr: "قم بتهيئة كرتوش المخطط وإثراء هويته المهنية عبر أدوات اللوحة الجانبية:\n• البيانات الإدارية: أدخل رقم الملف، اسم المالك، الجماعة، الإقليم، والمدينة لتعبئة ترويسة المخطط تلقائياً.\n• بادئات النقط والقمم (Prefix): قم بتغيير بادئة التسمية بضغطة زر؛ اختر P (افتراضي)، أو B (Borne)، أو أرقاماً مجردة دون بادئة، أو اكتب بادئة مخصصة من إعدادك (مثل S أو T)، وستتغير التسميات فوراً على الخريطة والجداول.\n• السلم والمقياس (Scale): دع التطبيق يحدد السلم الأمثل تلقائياً لملاءمة حيز الورقة، أو حدد مقياساً قياسياً يدوياً (مثال: 1/500، 1/1000، 1/2000) للالتزام بشروط المحافظة العقارية.",
+      descFr: "Configurez l'arrière-plan administratif et ajustez l'identité technique de vos plans depuis les paramètres :\n• Métadonnées de l'Affaire : Renseignez le numéro de dossier, propriétaire, province, commune et localité pour générer les blocs de titres.\n• Préfixe des Sommets : Modifiez le style d'étiquetage en choisissant P (P1, P2...), B (B1, B2...), des chiffres bruts (1, 2...) ou saisissez un préfixe personnalisé de votre choix (ex: S, T) pour tout actualiser.\n• Échelle du Plan : Laissez le système calculer l'échelle automatique ou fixez un ratio standard manuel (1/500, 1/1000, 1/2000) obligatoire.",
+      descEn: "Setup the technical drawing block and modify administrative credentials easily from the sidebar controls:\n• Project Metadata: Enter dossier number, landowner name, province, municipality, and locality to populate title blocks automatically.\n• Custom Vertex Prefix: Switch naming styles in one click: select default P (P1, P2...), boundary Borne B (B1, B2...), raw numbers, or type your own custom prefix (e.g. S or T).\n• Drawing Scale: Enable automatic scale calculations to fit the drawing frame, or specify a rigid manual scale (1/500, 1/1000, 1/2000) to meet requirements.",
+      captureType: "layout_setup_mock",
+      badgeColor: "bg-amber-500/10 text-amber-400 border-amber-500/20"
+    },
+    {
       step: "5",
-      titleAr: "الطباعة بدون صفحة الغلاف",
-      titleFr: "Impression sans page de garde",
-      descAr: "النمط الثاني: مخطط هندسي مدمج في صفحة واحدة أفقية (Plan Parcellaire) يحمل عنواناً بارزاً وشارة المساحة الرسمية مقسمة بالهكتار والآر والسنتيار.",
-      descFr: "Option 2 : Document de plan parcellaire sur une seule page paysage. Comprend un titre principal clair et un badge de surface traditionnel (Ha . A . Ca) en bas.",
-      captureType: "without_cover_mock",
-      badgeColor: "bg-pink-500/10 text-pink-400 border-pink-500/20"
+      titleAr: "حجم الخطوط ومفتاح الخريطة الديناميكي",
+      titleFr: "Légende Cartographique & Typographie Dynamique",
+      titleEn: "Dynamic Map Legend & Typography Sliders",
+      descAr: "يمنحك التطبيق مرونة تامة لتنسيق الكتابة والتعليقات وتفادي تداخل النصوص:\n• حجم خطوط التسميات: تحكم بشكل مستقل بحجم خطوط كتابة أسماء النقط، وأطوال الأضلاع، وتسميات المجاورين.\n• مسافة إزاحة النص (Text Offset): اضبط تباعد كتابة الأطوال والحدود عن خط المضلع للحفاظ على الوضوح الهندسي التام.\n• مفتاح الخريطة المطور (Legend): يمكنك إظهار أو إخفاء مفتاح المخطط، وتحديد موقعه (أعلى اليسار، أعلى اليمين...)، والتحكم بظهور الرموز الطبوغرافية الفردية (الأشجار، الآبار، البنايات، خطوط الكهرباء والماء)، وتعديل مسمياتها لثلاث لغات لتلائم مخططك.",
+      descFr: "Profitez d'outils évolués pour aérer votre plan et personnaliser le rendu cartographique :\n• Taille de Polices : Contrôlez séparément la taille des écritures des bornes, des longueurs de segments et des riverains.\n• Décalage des Textes (Offset) : Éloignez les étiquettes de distances et de limites des segments du polygone pour éviter les superpositions.\n• Légende Dynamique : Activez, configurez et positionnez l'encart de légende. Personnalisez l'affichage des symboles (arbres, puits, bâtiments, canalisations) et modifiez leurs étiquettes en arabe, français ou anglais.",
+      descEn: "Get access to rich text and element formatting controls to clean up and ventilate your technical drawing:\n• Font Sizes: Separately adjust the font sizes of vertex labels, segment lengths, and neighboring land boundaries.\n• Distance Offset: Slide to control the spacing between segment length labels and boundary lines to prevent overlapping.\n• Dynamic Map Legend: Enable, align, and customize the map legend block. You can toggle specific symbols (trees, wells, buildings, pipelines) and rewrite their labels in three languages.",
+      captureType: "dynamic_legend_mock",
+      badgeColor: "bg-blue-500/10 text-blue-400 border-blue-500/20"
     },
     {
       step: "6",
-      titleAr: "التصدير النهائي والتثبيت كـ PDF",
-      titleFr: "Exportation PDF & Paramètres navigateur",
-      descAr: "اضغط على طباعة، وفي إعدادات المتصفح تأكد من تفعيل خيار 'رسومات الخلفية' لحفظ ملف PDF كامل الألوان وبجودة أوتوكاد عالية الدقة.",
-      descFr: "Cliquez sur Imprimer. Veillez à activer l'option 'Graphiques d'arrière-plan' pour sauvegarder un document PDF couleur haute définition.",
+      titleAr: "الطباعة والإخراج النهائي وتصدير الـ PDF",
+      titleFr: "Modèles d'Impression & Exportation PDF Pro",
+      titleEn: "Print Formats & High-Quality PDF Exporting",
+      descAr: "اختر قالب الإخراج المناسب لغرضك التقني من شريط المعاينة المباشر وحفظ الملف بـ PDF:\n• النمط 1 (مرفوق بغلاف): يولد وثيقة فنية من صفحتين بحجم A4؛ الصفحة الأولى غلاف رسمي يحتوي على جدول الإحداثيات الكامل والصورة الجوية (مع خيار سهم المشروع الأحمر)، والصفحة الثانية مخصصة للمخطط الطبوغرافي.\n• النمط 2 (بدون غلاف): يولد مخططاً هندسياً مدمجاً في صفحة واحدة أفقية (Plan Parcellaire)، ويتميز بشارة المساحة الرسمية بالتقسيم المغربي التقليدي (هكتار . آر . سنتيار) مثل: SURFACE : 2 H . 14 A . 35 Ca.\n• نصائح الطباعة لـ PDF: اختر حفظ بتنسيق PDF، الحجم A4، قم بتفعيل 'رسومات الخلفية' (مهم لطباعة الخرائط الجوية الفضائية الملونة)، وألغِ تفعيل 'الهوامش الرأسية وتذييل الصفحة'.",
+      descFr: "Sélectionnez le format d'exportation idéal parmi nos modèles normalisés dans l'espace de prévisualisation :\n• Format 1 (Avec Page de Garde) : Dossier de 2 pages A4. Page 1 : Page de garde officielle avec tableau complet des sommets et extrait orthophoto satellite (avec flèche de projet rouge). Page 2 : Plan topographique officiel.\n• Format 2 (Plan seul) : Document horizontal (Paysage) d'une page avec grand titre PLAN PARCELLAIRE, grille de coordonnées, et badge officiel de surface exprimé au format marocain traditionnel (SURFACE : 1 H . 12 A . 45 Ca).\n• Consignes d'enregistrement : Choisissez 'Enregistrer au format PDF', taille A4, cochez impérativement 'Graphiques d'arrière-plan' pour retenir les fonds de carte colorés, et décochez 'En-têtes et pieds de page'.",
+      descEn: "Select the ideal printing template from the preview bar and configure browser settings for final high-quality output:\n• Format 1 (With Cover Page): Generates a 2-page A4 dossier. Page 1: Administrative cover sheet with full coordinate list and aerial satellite extract (with optional red Project Arrow). Page 2: Scaled topographic boundary plan.\n• Format 2 (Without Cover): Single-page landscape 'Plan Parcellaire' tailored solely for drawing details, featuring an elegant area badge in standard Moroccan format (e.g. SURFACE: 1 H . 24 A . 05 Ca).\n• Critical PDF Export Rules: Set target to 'Save as PDF', paper size 'A4', enable 'Background graphics' (mandatory to retain map and satellite colors), and disable 'Headers and footers' to clear URL/date stamps.",
       captureType: "print_setup_mock",
       badgeColor: "bg-teal-500/10 text-teal-400 border-teal-500/20"
     }
   ];
 
-  const sections = isAr ? sectionsAr : sectionsFr;
+  const sections = guideLang === "ar" ? sectionsAr : guideLang === "fr" ? sectionsFr : sectionsEn;
   const filteredSections = sections.filter(sec => 
     sec.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
     sec.content.toLowerCase().includes(searchQuery.toLowerCase())
@@ -250,137 +346,168 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
   // Helper function to render a beautiful mock screen capture for the expanded guide
   const renderMockCapture = (type: string) => {
     switch (type) {
+      case "file_import_mock":
+        return (
+          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-2.5 flex flex-col justify-center font-sans overflow-hidden">
+            <div className="absolute top-1.5 right-1.5 bg-slate-900 border border-slate-750/80 px-1 py-0.5 rounded text-[7px] text-emerald-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
+              <span>File Importer</span>
+            </div>
+            <div className="border border-dashed border-slate-800 bg-slate-900/40 rounded-lg p-2 text-center flex flex-col items-center justify-center h-24">
+              <UploadCloud className="w-5 h-5 text-indigo-400 mb-1" />
+              <div className="text-[7.5px] text-slate-300 font-extrabold mb-1">Drag & Drop Field Survey File</div>
+              <div className="flex flex-wrap gap-1 justify-center max-w-[220px]">
+                {["DXF", "KML", "KMZ", "GPX", "XLSX", "CSV", "SHP"].map(ext => (
+                  <span key={ext} className="px-1 py-0.5 bg-slate-950 border border-slate-800 rounded text-[6px] font-black text-slate-400">
+                    .{ext.toLowerCase()}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      case "excel_schema_mock":
+        return (
+          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-2 flex flex-col justify-center font-sans overflow-hidden">
+            <div className="absolute top-1.5 right-1.5 bg-slate-900 border border-slate-750/80 px-1 py-0.5 rounded text-[7px] text-indigo-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
+              <span>Excel Format (Recommandé)</span>
+            </div>
+            <div className="w-full overflow-hidden border border-slate-850 rounded-md text-[6.5px]">
+              <table className="w-full text-left border-collapse bg-slate-900">
+                <thead>
+                  <tr className="bg-slate-950 border-b border-slate-800 text-slate-400 font-black">
+                    <th className="p-1 border-r border-slate-800">Nom / Pt</th>
+                    <th className="p-1 border-r border-slate-800">X (Est / Lng)</th>
+                    <th className="p-1 border-r border-slate-800">Y (Nord / Lat)</th>
+                    <th className="p-1">Z (Altitude)</th>
+                  </tr>
+                </thead>
+                <tbody className="text-slate-300 font-mono">
+                  <tr className="border-b border-slate-850">
+                    <td className="p-1 border-r border-slate-850 bg-slate-950/50 text-indigo-400">P1</td>
+                    <td className="p-1 border-r border-slate-850">315482.40</td>
+                    <td className="p-1 border-r border-slate-850">284195.12</td>
+                    <td className="p-1">245.50</td>
+                  </tr>
+                  <tr>
+                    <td className="p-1 border-r border-slate-850 bg-slate-950/50 text-indigo-400">P2</td>
+                    <td className="p-1 border-r border-slate-850">315512.15</td>
+                    <td className="p-1 border-r border-slate-850">284210.88</td>
+                    <td className="p-1">247.10</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="text-[6.5px] text-slate-500 font-mono text-center mt-1">
+              Supports: X, Y, Est, Nord, Longitude, Latitude
+            </div>
+          </div>
+        );
       case "live_preview_mock":
         return (
-          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-3 flex flex-col justify-center items-center font-sans overflow-hidden">
+          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-2.5 flex flex-col justify-center items-center font-sans overflow-hidden">
             <div className="absolute top-1.5 right-1.5 bg-slate-900 border border-slate-750/80 px-1 py-0.5 rounded text-[7px] text-emerald-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
               <Camera className="w-2 h-2 text-emerald-400 animate-pulse" />
-              <span>Live Map Preview</span>
+              <span>Live Workspace Map</span>
             </div>
             {/* Draw Simulated interactive polygon */}
-            <svg className="w-24 h-20 text-emerald-400" viewBox="0 0 100 80">
+            <svg className="w-24 h-16 text-emerald-400 mt-2" viewBox="0 0 100 80">
               <polygon points="20,20 80,15 70,65 30,55" fill="rgba(16, 185, 129, 0.15)" stroke="#10b981" strokeWidth="1.5" />
               <circle cx="20" cy="20" r="3.5" fill="#f59e0b" className="animate-ping" />
               <circle cx="20" cy="20" r="2.5" fill="#f59e0b" />
               <circle cx="80" cy="15" r="2.5" fill="#10b981" />
               <circle cx="70" cy="65" r="2.5" fill="#10b981" />
               <circle cx="30" cy="55" r="2.5" fill="#10b981" />
-              <text x="12" y="15" fill="#ffffff" style={{ fontSize: "6px" }}>P1 (Drag)</text>
+              <text x="12" y="15" fill="#ffffff" style={{ fontSize: "6.5px", fontWeight: "bold" }}>P1 (Drag)</text>
             </svg>
-            <div className="text-[7.5px] text-slate-400 mt-1 font-mono text-center">
-              Surface: 4 H . 12 A . 08 Ca | Perim: 1,420 m
+            <div className="text-[7px] text-slate-400 mt-1 font-mono text-center">
+              Area: 2 H . 14 A . 35 Ca | Perim: 840 m
             </div>
           </div>
         );
-      case "add_point_mock":
+      case "layout_setup_mock":
         return (
-          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-3 flex flex-col justify-center items-center font-sans overflow-hidden">
+          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-2.5 flex flex-col justify-center font-sans overflow-hidden">
             <div className="absolute top-1.5 right-1.5 bg-slate-900 border border-slate-750/80 px-1 py-0.5 rounded text-[7px] text-amber-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
-              <Camera className="w-2 h-2 text-amber-400" />
-              <span>Coordinates Editor</span>
+              <span>Layout Settings</span>
             </div>
-            <div className="w-full max-w-[220px] bg-slate-900 border border-slate-800 rounded p-1.5 space-y-1">
-              <div className="flex gap-1 text-[7.5px] text-slate-300 font-bold">
-                <div className="flex-1">X (Est): <span className="bg-slate-950 px-1 py-0.5 rounded text-amber-400 font-mono">315482.40</span></div>
-                <div className="flex-1">Y (Nord): <span className="bg-slate-950 px-1 py-0.5 rounded text-amber-400 font-mono">284195.12</span></div>
+            <div className="w-full space-y-1.5 text-[7px] mt-2">
+              <div className="flex gap-1.5">
+                <div className="flex-1 bg-slate-900 p-1 rounded border border-slate-800">
+                  <span className="text-slate-500 font-bold block">SCALE / ÉCHELLE</span>
+                  <span className="text-amber-500 font-black">1/1000 (Auto-Fit)</span>
+                </div>
+                <div className="flex-1 bg-slate-900 p-1 rounded border border-slate-800">
+                  <span className="text-slate-500 font-bold block">PREFIX / البادئة</span>
+                  <span className="text-emerald-400 font-black">B1, B2... (Borne)</span>
+                </div>
               </div>
-              <button className="w-full bg-indigo-600/90 text-[7px] text-white py-0.5 rounded font-black flex items-center justify-center gap-1">
-                <PlusCircle className="w-2.5 h-2.5" />
-                <span>إضافة نقطة جديدة للمضلع</span>
-              </button>
+              <div className="flex gap-1.5">
+                <div className="flex-1 bg-slate-900 p-1 rounded border border-slate-800">
+                  <span className="text-slate-500 font-bold block">GRID INTERVAL</span>
+                  <span className="text-indigo-400 font-black">100 Meters Grid</span>
+                </div>
+                <div className="flex-1 bg-slate-900 p-1 rounded border border-slate-800">
+                  <span className="text-slate-500 font-bold block">OWNER / المالك</span>
+                  <span className="text-slate-200 truncate block">Propriété El Baraka</span>
+                </div>
+              </div>
             </div>
           </div>
         );
-      case "scale_labels_mock":
+      case "dynamic_legend_mock":
         return (
-          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-2 flex flex-col justify-center items-center font-sans overflow-hidden">
+          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-2 flex flex-col justify-center font-sans overflow-hidden">
             <div className="absolute top-1 right-1 bg-slate-900 border border-slate-750/80 px-1 py-0.5 rounded text-[6px] text-blue-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
-              <Camera className="w-2 h-2 text-blue-400" />
-              <span>Layout Config</span>
+              <span>Légende / Legend</span>
             </div>
-            <div className="w-full max-w-[240px] space-y-1 text-[7px] mt-2">
-              <div className="flex gap-1">
-                <div className="flex-1 bg-slate-900 p-1 rounded border border-slate-800">
-                  <span className="text-slate-500 font-bold block">السلم / ÉCHELLE</span>
-                  <span className="text-emerald-400 font-black">1/1000 (تلقائي)</span>
+            <div className="w-full max-w-[240px] space-y-1 text-[6.5px] mt-1.5">
+              <div className="bg-slate-900/60 p-1 rounded border border-slate-800/80 flex flex-col gap-1">
+                <div className="flex items-center justify-between text-slate-350 border-b border-slate-800 pb-1 mb-1">
+                  <span className="font-bold text-slate-200">Map Legend Items</span>
+                  <span className="text-blue-400 font-black">Top-Left</span>
                 </div>
-                <div className="flex-1 bg-slate-900 p-1 rounded border border-slate-800">
-                  <span className="text-slate-500 font-bold block">المجاورين / RIVERAINS</span>
-                  <span className="text-slate-200 truncate block">طريق عام بعرض 10م</span>
+                <div className="grid grid-cols-2 gap-1 font-medium">
+                  <div className="flex items-center gap-1 text-slate-300">
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                    <span>Boundary (Limites)</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-slate-300">
+                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-xs" />
+                    <span>Buildings (البنايات)</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-slate-300">
+                    <span className="text-amber-500 font-extrabold font-mono text-[5px]">⊙</span>
+                    <span>Water Well (بئر)</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-slate-300">
+                    <span className="text-red-500 font-extrabold text-[5px]">⚡</span>
+                    <span>Power Lines (الكهرباء)</span>
+                  </div>
                 </div>
-              </div>
-              <div className="flex gap-1">
-                <div className="flex-1 bg-slate-900 p-1 rounded border border-slate-800">
-                  <span className="text-slate-500 font-bold block">بادئة النقط / PREFIX</span>
-                  <span className="text-amber-500 font-black">B1, B2... (Borne)</span>
-                </div>
-                <div className="flex-1 bg-slate-900 p-1 rounded border border-slate-800">
-                  <span className="text-slate-500 font-bold block">الحجم والإزاحة / FONTS & OFFSET</span>
-                  <span className="text-indigo-400 font-black">Vertex: 8.5px | Offset: 7m</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      case "with_cover_mock":
-        return (
-          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-2 flex flex-col justify-center items-center font-sans overflow-hidden">
-            <div className="absolute top-1.5 right-1.5 bg-slate-900 border border-slate-750/80 px-1 py-0.5 rounded text-[7px] text-indigo-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
-              <Camera className="w-2 h-2 text-indigo-400" />
-              <span>Impression Type 1</span>
-            </div>
-            <div className="flex gap-2 items-center">
-              {/* Page 1 (Cover) */}
-              <div className="w-10 h-14 bg-white border border-slate-400 rounded p-0.5 flex flex-col justify-between">
-                <div className="w-full h-1 bg-indigo-600 rounded-xs" />
-                <div className="w-full h-3 bg-slate-100 rounded-xs flex items-center justify-center text-[4px] text-slate-800 font-bold">ROYAUME DU MAROC</div>
-                <div className="w-6 h-6 bg-slate-200 rounded-xs mx-auto" />
-                <div className="w-full h-1 bg-indigo-600 rounded-xs" />
-              </div>
-              <span className="text-slate-500 text-[10px] font-black">→</span>
-              {/* Page 2 (Plan) */}
-              <div className="w-10 h-14 bg-white border border-slate-400 rounded p-0.5 flex flex-col justify-between">
-                <div className="w-full h-6 bg-slate-100 rounded-xs flex items-center justify-center text-[4px] text-slate-800 font-mono">GRID / MAP</div>
-                <div className="w-full h-2 bg-slate-200 rounded-xs" />
-              </div>
-            </div>
-          </div>
-        );
-      case "without_cover_mock":
-        return (
-          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-2 flex flex-col justify-center items-center font-sans overflow-hidden">
-            <div className="absolute top-1.5 right-1.5 bg-slate-900 border border-slate-750/80 px-1 py-0.5 rounded text-[7px] text-pink-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
-              <Camera className="w-2 h-2 text-pink-400" />
-              <span>Impression Type 2</span>
-            </div>
-            {/* Single Landscape Page */}
-            <div className="w-16 h-11 bg-white border border-slate-400 rounded p-1 flex flex-col justify-between">
-              <div className="w-full text-center text-[4px] font-black text-slate-950 border-b border-slate-300 pb-0.5">PLAN PARCELLAIRE</div>
-              <div className="w-full h-4 bg-slate-100 rounded-xs flex items-center justify-center text-[3px] text-slate-600">MAP PREVIEW WITH GRID LINES</div>
-              {/* Area Badge Mock */}
-              <div className="bg-stone-50 border border-stone-800 text-[3.5px] font-bold py-0.5 text-center leading-none mt-1">
-                SURFACE : 1 H . 24 A . 15 Ca
               </div>
             </div>
           </div>
         );
       case "print_setup_mock":
         return (
-          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-3 flex flex-col justify-center items-center font-sans overflow-hidden">
+          <div className="w-full h-full bg-slate-950/90 border border-slate-800 rounded-xl relative p-2.5 flex flex-col justify-center items-center font-sans overflow-hidden">
             <div className="absolute top-1.5 right-1.5 bg-slate-900 border border-slate-750/80 px-1 py-0.5 rounded text-[7px] text-teal-400 font-mono flex items-center gap-1 uppercase tracking-wider select-none">
-              <Camera className="w-2 h-2 text-teal-400" />
-              <span>Browser Settings</span>
+              <span>Browser Print Settings</span>
             </div>
-            <div className="w-full max-w-[210px] space-y-1 bg-slate-900 p-2 rounded text-left text-[7.5px]">
-              <div className="flex items-center gap-1">
+            <div className="w-full max-w-[220px] space-y-1 bg-slate-900/80 p-2 rounded text-left text-[7.5px] border border-slate-800 mt-2">
+              <div className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded bg-emerald-500 flex items-center justify-center text-slate-950">
                   <Check className="w-2 h-2 stroke-[3]" />
                 </div>
-                <span className="text-slate-200 font-bold">Graphiques d'arrière-plan (Background)</span>
+                <span className="text-slate-250 font-bold">Graphiques d'arrière-plan (Background)</span>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded border border-slate-700 bg-slate-950" />
-                <span className="text-slate-400">En-têtes et pieds de page (Headers)</span>
+                <span className="text-slate-450">En-têtes et pieds de page (Headers)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded bg-slate-950 border border-slate-750 flex items-center justify-center text-slate-200 text-[6px]">A4</div>
+                <span className="text-slate-300">Format Papier : A4 Standard</span>
               </div>
             </div>
           </div>
@@ -392,9 +519,50 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
 
   const openExternalGuide = () => {
     const isArabic = guideLang === "ar";
+    const isEnglish = guideLang === "en";
     const dir = isArabic ? "rtl" : "ltr";
-    const title = isArabic ? "دليل الاستعمال المتكامل | Parcel Layout Designer" : "Guide d'Utilisation Intégral | Parcel Layout Designer";
+    const title = isArabic 
+      ? "دليل الاستعمال المتكامل | Parcel Layout Designer" 
+      : isEnglish 
+        ? "Comprehensive User Guide | Parcel Layout Designer" 
+        : "Guide d'Utilisation Intégral | Parcel Layout Designer";
     
+    const printBtnText = isArabic 
+      ? "طباعة الدليل أو الحفظ كـ PDF" 
+      : isEnglish 
+        ? "Print User Guide / Save as PDF" 
+        : "Imprimer le Guide / Sauvegarder en PDF";
+
+    const mainTitle = isArabic 
+      ? "دليل الاستعمال المصور والشامل - مخصص للرفع وتصميم المخططات" 
+      : isEnglish 
+        ? "COMPREHENSIVE & ILLUSTRATED USER GUIDE" 
+        : "MANUEL D'UTILISATION COMPLET & ILLUSTRÉ";
+
+    const designerText = isArabic 
+      ? "المهندس الواضع: عبد الله واضو" 
+      : isEnglish 
+        ? "Designed by: Abdellah Ouaddou" 
+        : "Conçu par : Abdellah Ouaddou";
+
+    const titleOne = isArabic 
+      ? "أولاً: الدليل البصري التفاعلي (خطوات العمل):" 
+      : isEnglish 
+        ? "I. Interactive Visual Guide (Key Steps):" 
+        : "I. Guide Visuel Interactif (Étapes clés) :";
+
+    const titleTwo = isArabic 
+      ? "ثانياً: الشرح المنهجي التفصيلي لوظائف التطبيق:" 
+      : isEnglish 
+        ? "II. In-Depth Methodological Manual:" 
+        : "II. Manuel d'utilisation approfondi :";
+
+    const popupAlertText = isArabic 
+      ? "الرجاء السماح للنوافذ المنبثقة لرؤية الدليل في صفحة مستقلة، أو يمكنك معاينته بالكامل مباشرة في التطبيق بالأسفل." 
+      : isEnglish 
+        ? "Please allow popups to view the external user guide, or view it directly inside the application below." 
+        : "Veuillez autoriser les fenêtres contextuelles pour afficher le guide externe, ou utilisez la prévisualisation dans l'application ci-dessous.";
+
     const htmlContent = `
       <!DOCTYPE html>
       <html lang="${guideLang}" dir="${dir}">
@@ -540,29 +708,29 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
       </head>
       <body>
         <div style="text-align: center;">
-          <button class="button-print" onclick="window.print()">${isArabic ? "طباعة الدليل أو الحفظ كـ PDF" : "Imprimer le Guide / Sauvegarder en PDF"}</button>
+          <button class="button-print" onclick="window.print()">${printBtnText}</button>
         </div>
         <div class="container">
           <div class="title-area">
-            <h1>${isArabic ? "دليل الاستعمال المصور والشامل - مخصص للرفع وتصميم المخططات" : "MANUEL D'UTILISATION COMPLET & IMAGE"}</h1>
+            <h1>${mainTitle}</h1>
             <div class="subtitle">Parcel Layout Designer / Professional Suite</div>
-            <div class="author">${isArabic ? "المهندس الواضع: عبد الله واضو" : "Conçu par : Abdellah Ouaddou"}</div>
+            <div class="author">${designerText}</div>
           </div>
 
-          <h3>${isArabic ? "أولاً: الدليل البصري التفاعلي (خطوات العمل):" : "I. Guide Visuel Rapide (Étapes clés) :"}</h3>
+          <h3>${titleOne}</h3>
           ${visualSteps.map(step => `
             <div class="visual-step-card">
               <div class="step-num">${step.step}</div>
               <div class="step-desc">
-                <div class="step-title">${isArabic ? step.titleAr : step.titleFr}</div>
-                <div class="step-text">${isArabic ? step.descAr : step.descFr}</div>
+                <div class="step-title">${isArabic ? step.titleAr : isEnglish ? step.titleEn : step.titleFr}</div>
+                <div class="step-text">${isArabic ? step.descAr : isEnglish ? step.descEn : step.descFr}</div>
               </div>
             </div>
           `).join("")}
 
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 40px 0;" />
 
-          <h3>${isArabic ? "ثانياً: الشرح المنهجي التفصيلي لوظائف التطبيق:" : "II. Manuel d'utilisation approfondi :"}</h3>
+          <h3>${titleTwo}</h3>
           ${sections.map(sec => `
             <div class="section">
               <h2>${sec.title}</h2>
@@ -588,10 +756,7 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
         newWindow.document.write(htmlContent);
         newWindow.document.close();
       } else {
-        alert(isArabic 
-          ? "الرجاء السماح للنوافذ المنبثقة لرؤية الدليل في صفحة مستقلة، أو يمكنك معاينته بالكامل مباشرة في التطبيق بالأسفل." 
-          : "Veuillez autoriser les fenêtres contextuelles pour afficher le guide externe, ou utilisez la prévisualisation dans l'application ci-dessous."
-        );
+        alert(popupAlertText);
       }
     }
   };
@@ -605,12 +770,20 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
         <div>
           <h3 className="text-lg font-black text-amber-500 flex items-center gap-2 tracking-wide">
             <BookOpen className="w-5 h-5 text-amber-500" />
-            <span>{isAr ? "دليل الاستعمال المصور والشامل للتطبيق" : "Manuel d'Utilisation Intégral & Illustré"}</span>
+            <span>
+              {isAr 
+                ? "دليل الاستعمال المصور والشامل للتطبيق" 
+                : isEn 
+                  ? "Comprehensive & Illustrated User Guide" 
+                  : "Manuel d'Utilisation Intégral & Illustré"}
+            </span>
           </h3>
           <p className="text-[10px] text-slate-400 mt-0.5">
             {isAr 
-              ? "دليل كامل خطوة بخطوة يشرح: المعاينة الحية، تعديل الرسم، وإعداد الطباعة مرفوقة أو بدون صفحة الغلاف"
-              : "Guide détaillé pas à pas : prévisualisation active, édition, configuration d'échelle et choix de livraison"}
+              ? "دليل كامل خطوة بخطوة يشرح: المعاينة الحية، تعديل الرسم، وإعداد الطباعة مرفوقة أو بدون صفحة الغلاف ومفتاح الخريطة"
+              : isEn
+                ? "Detailed step-by-step guide: live preview, polygon editing, scale config, legend options, and print layout choice"
+                : "Guide détaillé pas à pas : prévisualisation active, édition, configuration d'échelle, légende et choix de livraison"}
           </p>
         </div>
 
@@ -621,7 +794,7 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
             <button
               onClick={() => setGuideLang("ar")}
               className={`px-3 py-1.5 rounded-lg transition-all ${
-                isAr ? "bg-amber-600 text-white" : "text-slate-400 hover:text-slate-200"
+                guideLang === "ar" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-slate-200"
               }`}
             >
               العربية
@@ -629,10 +802,18 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
             <button
               onClick={() => setGuideLang("fr")}
               className={`px-3 py-1.5 rounded-lg transition-all ${
-                !isAr ? "bg-amber-600 text-white" : "text-slate-400 hover:text-slate-200"
+                guideLang === "fr" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-slate-200"
               }`}
             >
               Français
+            </button>
+            <button
+              onClick={() => setGuideLang("en")}
+              className={`px-3 py-1.5 rounded-lg transition-all ${
+                guideLang === "en" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              English
             </button>
           </div>
 
@@ -640,15 +821,27 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
           <button
             onClick={openExternalGuide}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold rounded-lg shadow transition hover:-translate-y-0.5"
-            title={isAr ? "فتح في تبويب مستقل وطباعة" : "Ouvrir dans un nouvel onglet pour impression"}
+            title={
+              isAr 
+                ? "فتح في تبويب مستقل وطباعة" 
+                : isEn 
+                  ? "Open in a new tab for printing" 
+                  : "Ouvrir dans un nouvel onglet pour impression"
+            }
           >
             <ExternalLink className="w-3.5 h-3.5" />
-            <span>{isAr ? "معاينة بملء الشاشة" : "Ouvrir en plein écran"}</span>
+            <span>
+              {isAr 
+                ? "معاينة بملء الشاشة" 
+                : isEn 
+                  ? "Open Full Screen" 
+                  : "Ouvrir en plein écran"}
+            </span>
           </button>
         </div>
       </div>
 
-      {/* Tabs Switcher: Visual Guide vs Detailed Chapters */}
+      {/* Tabs Switcher: Technical Specifications vs Detailed Chapters */}
       <div className="flex bg-slate-950 p-1.5 rounded-2xl border border-slate-800 mb-6 font-bold text-xs">
         <button
           onClick={() => setActiveTab("visual")}
@@ -658,8 +851,14 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
               : "text-slate-400 hover:text-slate-200"
           }`}
         >
-          <Camera className="w-4 h-4" />
-          <span>{isAr ? "المرشد المصور (لقطات شاشة توضيحية)" : "Guide Illustré (Captures d'écran)"}</span>
+          <FileText className="w-4 h-4" />
+          <span>
+            {isAr 
+              ? "دليل العمليات والمواصفات التفصيلية" 
+              : isEn 
+                ? "Operations Guide & Technical Specifications" 
+                : "Guide Opérationnel & Spécifications Techniques"}
+          </span>
         </button>
         <button
           onClick={() => setActiveTab("detailed")}
@@ -670,7 +869,13 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
           }`}
         >
           <BookOpen className="w-4 h-4" />
-          <span>{isAr ? "الفصول والشروحات المنهجية بالتفصيل" : "Manuel d'Utilisation Détaillé"}</span>
+          <span>
+            {isAr 
+              ? "الفصول والشروحات المنهجية بالتفصيل" 
+              : isEn 
+                ? "Detailed User Manual & Chapters" 
+                : "Manuel d'Utilisation Détaillé"}
+          </span>
         </button>
       </div>
 
@@ -689,12 +894,12 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
                     {step.step}
                   </span>
                   <h4 className="text-[13px] font-black text-slate-200 group-hover:text-amber-400 transition-colors">
-                    {isAr ? step.titleAr : step.titleFr}
+                    {isAr ? step.titleAr : isEn ? step.titleEn : step.titleFr}
                   </h4>
                 </div>
                 {/* Description text */}
-                <p className={`text-[11px] leading-relaxed text-slate-400 mb-5 ${isAr ? "text-right animate-none" : "text-left"}`}>
-                  {isAr ? step.descAr : step.descFr}
+                <p className={`text-[11px] leading-relaxed text-slate-400 mb-5 whitespace-pre-wrap ${isAr ? "text-right animate-none" : "text-left"}`}>
+                  {isAr ? step.descAr : isEn ? step.descEn : step.descFr}
                 </p>
               </div>
 
@@ -717,7 +922,13 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={isAr ? "البحث في فصول دليل الاستعمال..." : "Rechercher dans les sections du manuel..."}
+              placeholder={
+                isAr 
+                  ? "البحث في فصول دليل الاستعمال..." 
+                  : isEn 
+                    ? "Search manual chapters..." 
+                    : "Rechercher dans les sections du manuel..."
+              }
               className={`w-full pl-9 pr-4 py-2 bg-slate-950/80 border border-slate-750 rounded-xl text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium ${
                 isAr ? "text-right" : "text-left"
               }`}
@@ -751,7 +962,11 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
               ))
             ) : (
               <div className="text-center py-10 text-slate-500 text-xs font-bold font-mono">
-                {isAr ? "لا توجد نتائج مطابقة لبحثك" : "Aucun résultat ne correspond à votre recherche"}
+                {isAr 
+                  ? "لا توجد نتائج مطابقة لبحثك" 
+                  : isEn 
+                    ? "No matching chapters found" 
+                    : "Aucun résultat ne correspond à votre recherche"}
               </div>
             )}
           </div>
@@ -764,11 +979,19 @@ export function UserGuide({ lang: initialLang }: UserGuideProps) {
       }`}>
         <HelpCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
         <div>
-          <span className="font-extrabold block mb-0.5">{isAr ? "تلميحات هامة لتصميم مضلع القطع:" : "Conseil pour la numérisation :"}</span>
+          <span className="font-extrabold block mb-0.5">
+            {isAr 
+              ? "تلميحات هامة لتصميم مضلع القطع:" 
+              : isEn 
+                ? "Key Tips for Polygon Design:" 
+                : "Conseil pour la numérisation :"}
+          </span>
           <span className="text-[10.5px] text-slate-400 font-medium">
             {isAr 
               ? "لتعديل مضلع القطعة، يمكنك سحب النقاط مباشرة على الخريطة لرسم فوري، أو كتابة الإحداثيات في جدول القمم للحصول على الدقة الرياضية، ثم اختيار السلم المناسب ونمط الطباعة بالغطاء أو دونه من شريط خيارات المعاينة قبل تصدير ملف PDF."
-              : "Pour éditer votre parcelle, déplacez ses sommets sur la carte interactive, ajustez ses coordonnées dans la table d'arpentage, configurez les riverains et l'échelle, puis basculez entre l'impression avec ou sans page de garde."
+              : isEn
+                ? "To edit the parcel, drag markers directly on the interactive map or manually enter coordinate values in the table. Adjust neighboring owners, choose an automatic/manual scale, customize legend/text details, and toggle print formats before final high-quality PDF generation."
+                : "Pour éditer votre parcelle, déplacez ses sommets sur la carte interactive, ajustez ses coordonnées dans la table d'arpentage, configurez les riverains et l'échelle, puis basculez entre l'impression avec ou sans page de garde."
             }
           </span>
         </div>

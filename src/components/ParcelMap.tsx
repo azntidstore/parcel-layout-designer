@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Parcel, Vertex, Segment, DocumentSettings } from "../types";
+import { Parcel, Vertex, Segment, DocumentSettings, MapSymbol, LineVertex } from "../types";
 import {
   planeToLatLng,
   latLngToPlane,
@@ -9,6 +9,7 @@ import {
   getSegmentAngle,
   getOutsidePoint,
   calculateCentroid,
+  getParallelPolylines,
 } from "../utils/gisUtils";
 import { SupportedCRS, CRS_DETAILS } from "../utils/projectionManager";
 import {
@@ -43,6 +44,19 @@ interface ParcelMapProps {
   onDeleteVertex?: (id: number) => void;
   isDrawingMode: boolean;
   setDrawingMode: (val: boolean) => void;
+  onUpdateParcel?: (updated: Parcel) => void;
+  symbolToPlace?: "cemetery" | "tree" | "well" | "building" | "mosque" | "custom_text" | "palm" | "reed" | "grass" | "transformer" | "olive" | "geodetic" | "spring" | null;
+  onPlacedSymbolDone?: () => void;
+  symbolPlacementLabel?: string;
+  lineToPlace?: "footpath" | "agri_road" | "power_line" | "water_pipe" | "sewer_pipe" | null;
+  linePlacementLabel?: string;
+  onPlacedLineDone?: () => void;
+  customLineSpacing?: number;
+  customLineThickness?: number;
+  customLineColor?: string;
+  customLabelColor?: string;
+  customLabelSize?: number;
+  lang?: "ar" | "fr" | "en";
 }
 
 export const ParcelMap: React.FC<ParcelMapProps> = ({
@@ -58,7 +72,22 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
   onDeleteVertex,
   isDrawingMode,
   setDrawingMode,
+  onUpdateParcel,
+  symbolToPlace,
+  onPlacedSymbolDone,
+  symbolPlacementLabel,
+  lineToPlace,
+  linePlacementLabel,
+  onPlacedLineDone,
+  customLineSpacing = 4,
+  customLineThickness = 2,
+  customLineColor = "",
+  customLabelColor = "",
+  customLabelSize = 9.5,
+  lang = "ar",
 }) => {
+  const l = (ar: string, fr: string, en?: string) => lang === "ar" ? ar : lang === "en" ? (en || fr) : fr;
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const plusMarkerRef = useRef<L.Marker | null>(null);
@@ -93,23 +122,15 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     x: number;
     y: number;
   } | null>(null);
-  const [lang, setLang] = useState<"ar" | "fr">("ar");
+  const [editingSymbol, setEditingSymbol] = useState<MapSymbol | null>(null);
+
+  // Temporary local drawing state for custom polylines/linear features
+  const [drawingLineVertices, setDrawingLineVertices] = useState<LineVertex[]>([]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("cadastral_language");
-    if (saved === "ar" || saved === "fr") {
-      setLang(saved);
-    }
-    
-    // Periodically poll/sync language changes if the user switches in real-time
-    const interval = setInterval(() => {
-      const current = localStorage.getItem("cadastral_language");
-      if (current && (current === "ar" || current === "fr")) {
-        setLang(prev => prev !== current ? (current as any) : prev);
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+    setDrawingLineVertices([]);
+  }, [lineToPlace]);
+
 
   const layersRef = useRef<{
     tileLayer: L.TileLayer | null;
@@ -120,6 +141,10 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     labelMarkers: L.Marker[];
     additionalLabelMarkers: L.Marker[];
     gridLines: L.Polyline[];
+    interiorLabelMarker: L.Marker | null;
+    symbolMarkers: L.Marker[];
+    linearFeatureLayers: L.Layer[];
+    drawingLineLayers: L.Layer[];
   }>({
     tileLayer: null,
     polygon: null,
@@ -129,6 +154,10 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     labelMarkers: [],
     additionalLabelMarkers: [],
     gridLines: [],
+    interiorLabelMarker: null,
+    symbolMarkers: [],
+    linearFeatureLayers: [],
+    drawingLineLayers: [],
   });
 
   const measureLayersRef = useRef<{
@@ -269,12 +298,61 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     }
   }, [mapPreset]);
 
-  // Handle map drawing click additions
+  // Handle map drawing click additions and custom symbol placements
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     const handleMapClick = (e: L.LeafletMouseEvent) => {
+      if (lineToPlace) {
+        const { x, y } = latLngToPlane(e.latlng.lat, e.latlng.lng, activeCRS);
+        setDrawingLineVertices((prev) => [
+          ...prev,
+          { x: parseFloat(x.toFixed(2)), y: parseFloat(y.toFixed(2)) },
+        ]);
+        return;
+      }
+
+      if (symbolToPlace) {
+        const { x, y } = latLngToPlane(e.latlng.lat, e.latlng.lng, activeCRS);
+        
+        let currentLabel = symbolPlacementLabel || "";
+        if (symbolToPlace === "custom_text" && !currentLabel) {
+          try {
+            const prompted = prompt(
+              lang === "ar" ? "أدخل نص الكتابة الحرة:" : "Saisissez le texte libre :",
+              ""
+            );
+            if (prompted !== null && prompted.trim() !== "") {
+              currentLabel = prompted;
+            } else {
+              currentLabel = lang === "ar" ? "كتابة حرة" : "Texte Libre";
+            }
+          } catch (err) {
+            currentLabel = lang === "ar" ? "كتابة حرة" : "Texte Libre";
+          }
+        }
+
+        const newSymbol = {
+          id: "sym_" + Date.now() + "_" + Math.floor(Math.random() * 100000),
+          type: symbolToPlace,
+          label: currentLabel,
+          x: parseFloat(x.toFixed(2)),
+          y: parseFloat(y.toFixed(2)),
+        };
+        const updatedSymbols = [...(parcel.symbols || []), newSymbol];
+        if (onUpdateParcel) {
+          onUpdateParcel({
+            ...parcel,
+            symbols: updatedSymbols,
+          });
+        }
+        if (onPlacedSymbolDone) {
+          onPlacedSymbolDone();
+        }
+        return;
+      }
+
       if (!isDrawingMode) return;
       const { x, y } = latLngToPlane(e.latlng.lat, e.latlng.lng, activeCRS);
       
@@ -309,7 +387,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
     return () => {
       map.off("click", handleMapClick);
     };
-  }, [isDrawingMode, onAddVertex, activeCRS, parcel.vertices]);
+  }, [isDrawingMode, onAddVertex, activeCRS, parcel, symbolToPlace, symbolPlacementLabel, onUpdateParcel, onPlacedSymbolDone, lang, lineToPlace, setDrawingLineVertices]);
 
   // Mutual exclusion of tools
   useEffect(() => {
@@ -582,7 +660,11 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
           plusMarkerRef.current = newMarker;
 
           newMarker.on("mousedown", (clickEvent) => {
-            L.DomEvent.stopPropagation(clickEvent);
+            if (clickEvent.originalEvent) {
+              L.DomEvent.stopPropagation(clickEvent.originalEvent);
+            } else {
+              L.DomEvent.stopPropagation(clickEvent as any);
+            }
             const plane = latLngToPlane(savedLatLng.lat, savedLatLng.lng, activeCRS);
             onAddVertex(plane.x, plane.y, savedIndex);
 
@@ -595,7 +677,11 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
           plusMarkerRef.current.setLatLng(savedLatLng);
           plusMarkerRef.current.off("mousedown");
           plusMarkerRef.current.on("mousedown", (clickEvent) => {
-            L.DomEvent.stopPropagation(clickEvent);
+            if (clickEvent.originalEvent) {
+              L.DomEvent.stopPropagation(clickEvent.originalEvent);
+            } else {
+              L.DomEvent.stopPropagation(clickEvent as any);
+            }
             const plane = latLngToPlane(savedLatLng.lat, savedLatLng.lng, activeCRS);
             onAddVertex(plane.x, plane.y, savedIndex);
 
@@ -658,12 +744,29 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
       layersRef.current.additionalLabelMarkers.forEach((m) => map.removeLayer(m));
     }
 
+    if (layersRef.current.interiorLabelMarker) {
+      map.removeLayer(layersRef.current.interiorLabelMarker);
+      layersRef.current.interiorLabelMarker = null;
+    }
+    if (layersRef.current.symbolMarkers) {
+      layersRef.current.symbolMarkers.forEach((m) => map.removeLayer(m));
+    }
+    if (layersRef.current.linearFeatureLayers) {
+      layersRef.current.linearFeatureLayers.forEach((l) => map.removeLayer(l));
+    }
+    if (layersRef.current.drawingLineLayers) {
+      layersRef.current.drawingLineLayers.forEach((l) => map.removeLayer(l));
+    }
+
     layersRef.current.vertexMarkers = [];
     layersRef.current.labelMarkers = [];
     layersRef.current.gridLines = [];
     layersRef.current.additionalPolygons = [];
     layersRef.current.additionalVertexMarkers = [];
     layersRef.current.additionalLabelMarkers = [];
+    layersRef.current.symbolMarkers = [];
+    layersRef.current.linearFeatureLayers = [];
+    layersRef.current.drawingLineLayers = [];
 
     const isSatellite = mapPreset === "satellite" || mapPreset === "google_sat";
     const isCad = mapPreset === "cad";
@@ -728,6 +831,53 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
       fillOpacity: isCad ? 0.85 : isSatellite ? 0.12 : 0.2,
     }).addTo(map);
     layersRef.current.polygon = poly;
+
+    // Handle clicking inside the polygon to place symbols/custom text
+    poly.on("click", (e: L.LeafletMouseEvent) => {
+      if (symbolToPlace) {
+        if (e.originalEvent) {
+          L.DomEvent.stopPropagation(e.originalEvent);
+        } else {
+          L.DomEvent.stopPropagation(e as any);
+        }
+        const { x, y } = latLngToPlane(e.latlng.lat, e.latlng.lng, activeCRS);
+        
+        let currentLabel = symbolPlacementLabel || "";
+        if (symbolToPlace === "custom_text" && !currentLabel) {
+          try {
+            const prompted = prompt(
+              lang === "ar" ? "أدخل نص الكتابة الحرة:" : "Saisissez le texte libre :",
+              ""
+            );
+            if (prompted !== null && prompted.trim() !== "") {
+              currentLabel = prompted;
+            } else {
+              currentLabel = lang === "ar" ? "كتابة حرة" : "Texte Libre";
+            }
+          } catch (err) {
+            currentLabel = lang === "ar" ? "كتابة حرة" : "Texte Libre";
+          }
+        }
+
+        const newSymbol = {
+          id: "sym_" + Date.now() + "_" + Math.floor(Math.random() * 100000),
+          type: symbolToPlace,
+          label: currentLabel,
+          x: parseFloat(x.toFixed(2)),
+          y: parseFloat(y.toFixed(2)),
+        };
+        const updatedSymbols = [...(parcel.symbols || []), newSymbol];
+        if (onUpdateParcel) {
+          onUpdateParcel({
+            ...parcel,
+            symbols: updatedSymbols,
+          });
+        }
+        if (onPlacedSymbolDone) {
+          onPlacedSymbolDone();
+        }
+      }
+    });
 
     // 3.5 Render Additional Selected Adjacent Parcels (with beautiful distinct borders & custom colors)
     const addPolys: L.Polygon[] = [];
@@ -917,7 +1067,11 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
       });
 
       mk.on("mousedown", (e) => {
-        L.DomEvent.stopPropagation(e);
+        if (e.originalEvent) {
+          L.DomEvent.stopPropagation(e.originalEvent);
+        } else {
+          L.DomEvent.stopPropagation(e as any);
+        }
         if (isDeleteMode && onDeleteVertex) {
           onDeleteVertex(v.id);
         } else {
@@ -998,12 +1152,513 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
 
         const labelMarker = L.marker(latlngLabel, { icon: labelIcon }).addTo(map);
         labelMarker.on("click", (e) => {
-          L.DomEvent.stopPropagation(e);
+          if (e.originalEvent) {
+            L.DomEvent.stopPropagation(e.originalEvent);
+          } else {
+            L.DomEvent.stopPropagation(e as any);
+          }
           onSegmentSelect(seg.id);
         });
 
         layersRef.current.labelMarkers.push(labelMarker);
       });
+    }
+
+    // 5.5 Render Custom Interior Label at Polygon centroid
+    if (parcel.interiorLabel) {
+      const labelIcon = L.divIcon({
+        className: "custom-interior-label",
+        html: `
+          <div 
+            style="text-shadow: -1.5px -1.5px 0 #fff, 1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff, 1.5px 1.5px 0 #fff, 0px 2px 3px rgba(0,0,0,0.45); font-size: ${(settings.labelFontSize || 7.0) * 1.5}px;"
+            class="text-stone-900 font-black whitespace-nowrap pointer-events-none select-none text-center"
+          >
+            ${parcel.interiorLabel}
+          </div>
+        `,
+        iconSize: [200, 30],
+        iconAnchor: [100, 15],
+      });
+      const centroidLatLng = planeToLatLng(centroidPlane.x, centroidPlane.y, activeCRS);
+      layersRef.current.interiorLabelMarker = L.marker(centroidLatLng, { icon: labelIcon }).addTo(map);
+    }
+
+    // 5.6 Render Custom Map Symbols
+    (parcel.symbols || []).forEach((sym) => {
+      const symLatLng = planeToLatLng(sym.x, sym.y, activeCRS);
+      
+      const customColor = sym.color || (
+        sym.type === "tree" ? "#16a34a" :
+        sym.type === "cemetery" ? "#1c1917" :
+        sym.type === "well" ? "#2563eb" :
+        sym.type === "building" ? "#dc2626" :
+        sym.type === "mosque" ? "#d97706" :
+        sym.type === "palm" ? "#059669" :
+        sym.type === "reed" ? "#854d0e" :
+        sym.type === "grass" ? "#16a34a" :
+        sym.type === "transformer" ? "#ea580c" :
+        sym.type === "olive" ? "#65a30d" :
+        sym.type === "geodetic" ? "#dc2626" :
+        sym.type === "spring" ? "#0284c7" :
+        "#1c1917"
+      );
+      const customSize = sym.size || 24;
+      const customFontSize = sym.fontSize || 12;
+
+      let symbolHtml = "";
+      let symbolTitle = "";
+      if (sym.type === "tree") {
+        symbolHtml = `
+          <div class="flex items-center justify-center transition-all duration-200" style="width: ${customSize}px; height: ${customSize}px; color: ${customColor};">
+            <svg viewBox="0 0 24 24" style="width: 100%; height: 100%;" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <path d="M12 22V13" stroke-width="2.5" />
+              <path d="M12 13a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" fill="currentColor" fill-opacity="0.25" />
+              <circle cx="10" cy="8" r="3.5" stroke="currentColor" fill="currentColor" fill-opacity="0.1" />
+              <circle cx="14" cy="8" r="3.5" stroke="currentColor" fill="currentColor" fill-opacity="0.1" />
+            </svg>
+          </div>
+        `;
+        symbolTitle = l("شجرة", "Arbre", "Tree");
+      } else if (sym.type === "cemetery") {
+        symbolHtml = `
+          <div class="flex items-center justify-center transition-all duration-200" style="width: ${customSize}px; height: ${customSize}px; color: ${customColor};">
+            <svg viewBox="0 0 24 24" style="width: 100%; height: 100%;" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <!-- Elegant, thin crescent pointing upwards -->
+              <path d="M12 5c-2.8 0-5 2.2-5 5s2.2 5 5 5c1.5 0 2.8-.7 3.6-1.7c-2.1 0-4-1.8-4-4.1s1.9-4.1 4-4.1C14.8 5.7 13.5 5 12 5Z" fill="currentColor" stroke="none" />
+              
+              <!-- Left Grave sign (arch) -->
+              <path d="M5 18c0-1.4 .8-2.2 1.8-2.2s1.8 .8 1.8 2.2" />
+              <line x1="4.2" y1="18" x2="9.4" y2="18" />
+              
+              <!-- Right Grave sign (arch) -->
+              <path d="M15.4 18c0-1.4 .8-2.2 1.8-2.2s1.8 .8 1.8 2.2" />
+              <line x1="14.6" y1="18" x2="19.8" y2="18" />
+            </svg>
+          </div>
+        `;
+        symbolTitle = l("مقبرة", "Cimetière", "Cemetery");
+      } else if (sym.type === "well") {
+        symbolHtml = `
+          <div class="flex items-center justify-center transition-all duration-200" style="width: ${customSize}px; height: ${customSize}px; color: ${customColor};">
+            <svg viewBox="0 0 24 24" style="width: 100%; height: 100%;" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <circle cx="12" cy="12" r="9" fill="currentColor" fill-opacity="0.15" />
+              <circle cx="12" cy="12" r="4" fill="currentColor" />
+            </svg>
+          </div>
+        `;
+        symbolTitle = l("بئر", "Puits", "Well");
+      } else if (sym.type === "building") {
+        symbolHtml = `
+          <div class="flex items-center justify-center transition-all duration-200" style="width: ${customSize}px; height: ${customSize}px; color: ${customColor};">
+            <svg viewBox="0 0 24 24" style="width: 100%; height: 100%;" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <path d="M3 21h18" />
+              <rect x="5" y="9" width="14" height="12" fill="currentColor" fill-opacity="0.15" />
+              <polyline points="3,9 12,3 21,9" />
+              <rect x="10" y="15" width="4" height="6" />
+            </svg>
+          </div>
+        `;
+        symbolTitle = l("بناء", "Bâtiment / Maison", "Building");
+      } else if (sym.type === "mosque") {
+        symbolHtml = `
+          <div class="flex items-center justify-center transition-all duration-200" style="width: ${customSize}px; height: ${customSize}px; color: ${customColor};">
+            <svg viewBox="0 0 24 24" style="width: 100%; height: 100%;" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <path d="M3 21h18" />
+              <path d="M6 21v-4a6 6 0 0 1 12 0v4" fill="currentColor" fill-opacity="0.15" />
+              <path d="M12 11V6" stroke-width="2" />
+              <path d="M12 5a1.5 1.5 0 1 1-1.2 1.8" stroke-width="1.5" />
+              <path d="M10 21v-3a2 2 0 0 1 4 0v3" />
+            </svg>
+          </div>
+        `;
+        symbolTitle = l("مسجد", "Mosquée", "Mosque");
+      } else if (sym.type === "palm") {
+        symbolHtml = `
+          <div class="flex items-center justify-center transition-all duration-200" style="width: ${customSize}px; height: ${customSize}px; color: ${customColor};">
+            <svg viewBox="0 0 24 24" style="width: 100%; height: 100%;" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <path d="M12 22V12" stroke-width="2.5" />
+              <path d="M12 12c-2-2-5-1-6 1" />
+              <path d="M12 12c2-2 5-1 6 1" />
+              <path d="M12 12c-1-3-4-4-6-3" />
+              <path d="M12 12c1-3 4-4 6-3" />
+              <path d="M12 12c0-4-2-5-3-5" />
+              <path d="M12 12c0-4 2-5 3-5" />
+            </svg>
+          </div>
+        `;
+        symbolTitle = l("نخيل", "Palmier", "Palm Tree");
+      } else if (sym.type === "reed") {
+        symbolHtml = `
+          <div class="flex items-center justify-center transition-all duration-200" style="width: ${customSize}px; height: ${customSize}px; color: ${customColor};">
+            <svg viewBox="0 0 24 24" style="width: 100%; height: 100%;" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <path d="M12 22V5" stroke-width="2" />
+              <path d="M8 22C8 16 6 12 4 10" />
+              <path d="M16 22C16 16 18 12 20 10" />
+              <rect x="11" y="2" width="2" height="6" rx="1" fill="currentColor" />
+              <circle cx="4" cy="9" r="1" fill="currentColor" />
+              <circle cx="20" cy="9" r="1" fill="currentColor" />
+            </svg>
+          </div>
+        `;
+        symbolTitle = l("قصب", "Roseau", "Reed");
+      } else if (sym.type === "grass") {
+        symbolHtml = `
+          <div class="flex items-center justify-center transition-all duration-200" style="width: ${customSize}px; height: ${customSize}px; color: ${customColor};">
+            <svg viewBox="0 0 24 24" style="width: 100%; height: 100%;" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <path d="M12 22C12 14 8 10 5 9" />
+              <path d="M12 22C12 11 16 7 20 6" />
+              <path d="M12 22C12 15 10 9 7 7" stroke-width="1.8" />
+              <path d="M12 22C12 15 14 9 17 7" stroke-width="1.8" />
+            </svg>
+          </div>
+        `;
+        symbolTitle = l("أعشاب", "Herbe", "Grass");
+      } else if (sym.type === "transformer") {
+        symbolHtml = `
+          <div class="flex items-center justify-center transition-all duration-200" style="width: ${customSize}px; height: ${customSize}px; color: ${customColor};">
+            <svg viewBox="0 0 24 24" style="width: 100%; height: 100%;" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <rect x="5" y="7" width="14" height="13" rx="1.5" fill="currentColor" fill-opacity="0.15" />
+              <path d="M12 3v4" stroke-width="2" />
+              <path d="M8 3h8" />
+              <path d="M13 10l-3 3.5h4l-2 3.5" stroke-width="1.8" />
+            </svg>
+          </div>
+        `;
+        symbolTitle = l("محول كهربائي", "Transformateur", "Power Transformer");
+      } else if (sym.type === "olive") {
+        symbolHtml = `
+          <div class="flex items-center justify-center transition-all duration-200" style="width: ${customSize}px; height: ${customSize}px; color: ${customColor};">
+            <svg viewBox="0 0 24 24" style="width: 100%; height: 100%;" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <!-- Trunk -->
+              <path d="M12 22c0-3 0.5-4.5 1.5-5.5" stroke-width="2.2" />
+              <path d="M12 22c0-3-0.5-4.5-1.5-5.5" stroke-width="2.2" />
+              <path d="M12 22v-5.5" stroke-width="2.6" />
+              <path d="M10.5 16.5c-1.5-1.5-2-3-1.5-4.5" />
+              <path d="M13.5 16.5c1.5-1.5 2-3 1.5-4.5" />
+              
+              <!-- Leafy Canopies -->
+              <circle cx="12" cy="9" r="5" fill="currentColor" fill-opacity="0.25" stroke="currentColor" stroke-width="1.2" />
+              <circle cx="8" cy="11" r="4" fill="currentColor" fill-opacity="0.25" stroke="currentColor" stroke-width="1.2" />
+              <circle cx="16" cy="11" r="4" fill="currentColor" fill-opacity="0.25" stroke="currentColor" stroke-width="1.2" />
+              
+              <!-- Little Olive Fruits -->
+              <circle cx="10" cy="9" r="1.1" fill="#1c1917" stroke="none" />
+              <circle cx="14" cy="10" r="1.1" fill="#1c1917" stroke="none" />
+              <circle cx="12" cy="12" r="1.1" fill="#1c1917" stroke="none" />
+              <circle cx="8" cy="11" r="1.1" fill="#1c1917" stroke="none" />
+              <circle cx="16" cy="11" r="1.1" fill="#1c1917" stroke="none" />
+            </svg>
+          </div>
+        `;
+        symbolTitle = l("شجرة زيتون", "Olivier", "Olive Tree");
+      } else if (sym.type === "geodetic") {
+        symbolHtml = `
+          <div class="flex items-center justify-center transition-all duration-200" style="width: ${customSize}px; height: ${customSize}px; color: ${customColor};">
+            <svg viewBox="0 0 24 24" style="width: 100%; height: 100%;" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <polygon points="12,3 22,20 2,20" fill="currentColor" fill-opacity="0.15" stroke-width="2" />
+              <circle cx="12" cy="14" r="2.5" fill="currentColor" />
+            </svg>
+          </div>
+        `;
+        symbolTitle = l("نقطة جيوديزية", "Point Géodésique", "Geodetic Point");
+      } else if (sym.type === "spring") {
+        symbolHtml = `
+          <div class="flex items-center justify-center transition-all duration-200" style="width: ${customSize}px; height: ${customSize}px; color: ${customColor};">
+            <svg viewBox="0 0 24 24" style="width: 100%; height: 100%;" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <path d="M12 3v3M12 21a6 6 0 0 0 6-6c0-4-6-10-6-10S6 11 6 15a6 6 0 0 0 6 6z" fill="currentColor" fill-opacity="0.2" />
+              <path d="M9 15c0-1.5 1.5-3 3-3" />
+            </svg>
+          </div>
+        `;
+        symbolTitle = l("عين ماء", "Source d'eau", "Water Spring");
+      } else if (sym.type === "custom_text") {
+        symbolHtml = `
+          <div 
+            style="text-shadow: -1.5px -1.5px 0 #fff, 1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff, 1.5px 1.5px 0 #fff, 0px 0px 4px #fff; font-size: ${customFontSize}px; color: ${customColor};"
+            class="font-black whitespace-nowrap text-center select-none"
+          >
+            ${sym.label || l("كتابة حرة", "Texte Libre", "Custom Text")}
+          </div>
+        `;
+        symbolTitle = l("نص مخصص", "Texte personnalisé", "Custom Text");
+
+      }
+
+      const hasSubtitle = sym.label && sym.type !== "custom_text";
+      const fullHtml = `
+        <div class="flex flex-col items-center justify-center relative select-none animate-fade-in">
+          ${symbolHtml}
+          ${hasSubtitle ? `
+            <span 
+              style="text-shadow: -1.5px -1.5px 0 #fff, 1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff, 1.5px 1.5px 0 #fff, 0px 0px 4px #fff; font-size: ${Math.max(8, customFontSize - 2)}px; color: ${customColor};"
+              class="font-black mt-1 py-0.2 whitespace-nowrap block text-center max-w-[120px] truncate select-none"
+            >
+              ${sym.label}
+            </span>
+          ` : ""}
+        </div>
+      `;
+
+      const iconSizeVal = sym.type === "custom_text" ? 150 : (customSize + 6);
+      const symIcon = L.divIcon({
+        html: fullHtml,
+        className: "custom-map-symbol-marker",
+        iconSize: [iconSizeVal, iconSizeVal],
+        iconAnchor: [iconSizeVal / 2, iconSizeVal / 2],
+      });
+
+      const symMarker = L.marker(symLatLng, {
+        icon: symIcon,
+        draggable: true,
+      }).addTo(map);
+
+      symMarker.bindTooltip(
+        `<b>${symbolTitle}</b>${sym.label ? `<br/><span class="text-xs text-stone-500">${sym.label}</span>` : ""}<br/><span class="text-[9px] text-stone-400 font-mono">X: ${sym.x.toFixed(2)}, Y: ${sym.y.toFixed(2)}</span>`,
+        {
+          direction: "top",
+          offset: [0, -10],
+        }
+      );
+
+      // Unified action handlers
+      let lastTriggered = 0;
+      const handleSymbolEdit = () => {
+        const now = Date.now();
+        if (now - lastTriggered < 300) return;
+        lastTriggered = now;
+        setEditingSymbol(sym);
+      };
+
+      // Bulletproof binding to guarantee events are caught at capture phase & bypass other leaflet/div icon restrictions
+      const bindSymbolEvents = () => {
+        const el = symMarker.getElement();
+        if (!el) return;
+
+        el.style.cursor = "grab";
+
+        // Bind edit action
+        const onEdit = (domEvent: Event) => {
+          domEvent.stopPropagation();
+          domEvent.preventDefault();
+          handleSymbolEdit();
+        };
+        el.addEventListener("mousedown", onEdit, { capture: true });
+        el.addEventListener("click", onEdit, { capture: true });
+      };
+
+      // Handle element-mounting phase seamlessly
+      if (symMarker.getElement()) {
+        bindSymbolEvents();
+      } else {
+        symMarker.on("add", bindSymbolEvents);
+      }
+
+      symMarker.on("dragend", (e: L.LeafletEvent) => {
+        const marker = e.target as L.Marker;
+        const pos = marker.getLatLng();
+        const plane = latLngToPlane(pos.lat, pos.lng, activeCRS);
+        
+        if (onUpdateParcel) {
+          const updatedSymbols = (parcel.symbols || []).map((s) => {
+            const sId = s.id || `${s.x}_${s.y}_${s.type}`;
+            const symId = sym.id || `${sym.x}_${sym.y}_${sym.type}`;
+            return sId === symId ? { ...s, x: parseFloat(plane.x.toFixed(2)), y: parseFloat(plane.y.toFixed(2)) } : s;
+          });
+          onUpdateParcel({
+            ...parcel,
+            symbols: updatedSymbols,
+          });
+        }
+      });
+
+      layersRef.current.symbolMarkers.push(symMarker);
+    });
+
+    // 5.7 Render Custom Linear Features
+    (parcel.linearFeatures || []).forEach((lf) => {
+      const lineLatLngs = lf.vertices
+        .map((v) => planeToLatLng(v.x, v.y, activeCRS))
+        .filter((ll) => Array.isArray(ll) && ll.length === 2 && !isNaN(ll[0]) && !isNaN(ll[1]));
+
+      if (lineLatLngs.length < 2) return;
+
+      const group = L.featureGroup();
+
+      if (lf.type === "footpath") {
+        // Dash line representation
+        const polyline = L.polyline(lineLatLngs, {
+          color: lf.color || "#b45309",
+          weight: lf.thickness || 3,
+          dashArray: "6, 6",
+          lineCap: "round",
+          lineJoin: "round",
+        });
+        group.addLayer(polyline);
+      } else if (lf.type === "agri_road") {
+        // Parallel double line with empty transparent middle space and customizable spacing
+        const spacingVal = lf.spacing !== undefined ? lf.spacing : 4;
+        const { left, right } = getParallelPolylines(lf.vertices, spacingVal / 2);
+        
+        const leftLatLngs = left
+          .map((v) => planeToLatLng(v.x, v.y, activeCRS))
+          .filter((ll) => Array.isArray(ll) && ll.length === 2 && !isNaN(ll[0]) && !isNaN(ll[1]));
+          
+        const rightLatLngs = right
+          .map((v) => planeToLatLng(v.x, v.y, activeCRS))
+          .filter((ll) => Array.isArray(ll) && ll.length === 2 && !isNaN(ll[0]) && !isNaN(ll[1]));
+
+        const leftPoly = L.polyline(leftLatLngs, {
+          color: lf.color || "#78350f",
+          weight: lf.thickness || 2,
+          lineCap: "round",
+          lineJoin: "round",
+        });
+        const rightPoly = L.polyline(rightLatLngs, {
+          color: lf.color || "#78350f",
+          weight: lf.thickness || 2,
+          lineCap: "round",
+          lineJoin: "round",
+        });
+        group.addLayer(leftPoly);
+        group.addLayer(rightPoly);
+      } else if (lf.type === "power_line") {
+        // Solid dark grey line with custom professional electrical pole icons at vertices
+        const mainLine = L.polyline(lineLatLngs, {
+          color: lf.color || "#475569",
+          weight: lf.thickness || 1.8,
+        });
+        group.addLayer(mainLine);
+
+        lineLatLngs.forEach((latlng) => {
+          const poleIcon = L.divIcon({
+            html: `
+              <div class="flex items-center justify-center" style="width: 24px; height: 24px; transform: rotate(0deg);">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <!-- Vertical mast -->
+                  <line x1="12" y1="2" x2="12" y2="22" stroke="${lf.color || '#475569'}" stroke-width="2.5" stroke-linecap="round" />
+                  <!-- Upper crossbar -->
+                  <line x1="4" y1="6" x2="20" y2="6" stroke="${lf.color || '#475569'}" stroke-width="2.5" stroke-linecap="round" />
+                  <!-- Lower crossbar -->
+                  <line x1="6" y1="12" x2="18" y2="12" stroke="${lf.color || '#475569'}" stroke-width="2" stroke-linecap="round" />
+                  <!-- Insulators -->
+                  <circle cx="4" cy="6" r="1.5" fill="#ffffff" stroke="${lf.color || '#475569'}" stroke-width="1.2" />
+                  <circle cx="20" cy="6" r="1.5" fill="#ffffff" stroke="${lf.color || '#475569'}" stroke-width="1.2" />
+                  <circle cx="6" cy="12" r="1.5" fill="#ffffff" stroke="${lf.color || '#475569'}" stroke-width="1" />
+                  <circle cx="18" cy="12" r="1.5" fill="#ffffff" stroke="${lf.color || '#475569'}" stroke-width="1" />
+                </svg>
+              </div>
+            `,
+            className: "",
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          });
+          const poleMarker = L.marker(latlng, { icon: poleIcon, interactive: false });
+          group.addLayer(poleMarker);
+        });
+      } else if (lf.type === "water_pipe") {
+        // Blue line with dash-dot style and small blue dots at vertices
+        const mainLine = L.polyline(lineLatLngs, {
+          color: lf.color || "#0284c7",
+          weight: lf.thickness || 2.2,
+          dashArray: "12, 4, 3, 4",
+        });
+        group.addLayer(mainLine);
+
+        lineLatLngs.forEach((latlng) => {
+          const c = L.circleMarker(latlng, {
+            radius: 3,
+            color: lf.color || "#0284c7",
+            fillColor: "#0284c7",
+            fillOpacity: 1,
+            weight: 1,
+          });
+          group.addLayer(c);
+        });
+      } else if (lf.type === "sewer_pipe") {
+        // Sewer line: reddish brown line with solid reddish brown circles at vertices representing manholes
+        const mainLine = L.polyline(lineLatLngs, {
+          color: lf.color || "#7c2d12",
+          weight: lf.thickness || 2.2,
+        });
+        group.addLayer(mainLine);
+
+        lineLatLngs.forEach((latlng) => {
+          const c = L.circleMarker(latlng, {
+            radius: 4,
+            color: lf.color || "#7c2d12",
+            fillColor: lf.color || "#7c2d12",
+            fillOpacity: 1,
+            weight: 1,
+          });
+          group.addLayer(c);
+        });
+      }
+
+      // Render line label with text shadow and no background
+      if (lf.label) {
+        const midIdx = Math.floor(lineLatLngs.length / 2);
+        const midLatLng = lineLatLngs[midIdx];
+        const lblColor = lf.labelColor || lf.color || '#1e293b';
+        const lblSize = lf.labelSize || 9.5;
+        const labelIcon = L.divIcon({
+          className: "bg-transparent border-0 shadow-none",
+          html: `
+            <div 
+              style="text-shadow: -1.5px -1.5px 0 #fff, 1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff, 1.5px 1.5px 0 #fff, 0px 0px 4px #fff; font-size: ${lblSize}px; color: ${lblColor}; line-height: 1;"
+              class="font-black px-1 py-0.5 whitespace-nowrap block text-center select-none"
+            >
+              ${lf.label}
+            </div>
+          `,
+          iconSize: [140, 20],
+          iconAnchor: [70, 10],
+        });
+        const labelMarker = L.marker(midLatLng, { icon: labelIcon, interactive: false });
+        group.addLayer(labelMarker);
+      }
+
+      const lineName = lf.type === "footpath" ? l("طريق رجلية", "Sentier", "Footpath") :
+                       lf.type === "agri_road" ? l("طريق فلاحية", "Chemin agricole", "Agricultural Road") :
+                       lf.type === "power_line" ? l("خط الكهرباء", "Ligne électrique", "Power Line") :
+                       lf.type === "water_pipe" ? l("خط أنبوب الماء", "Conduite d'eau", "Water Pipe") :
+                       lf.type === "sewer_pipe" ? l("أنبوب تطهير السائل", "Réseau d'assainissement", "Sewer Pipe") : "";
+      
+      group.bindTooltip(`<b>${lf.label || lineName}</b>`, { sticky: true });
+      group.addTo(map);
+      layersRef.current.linearFeatureLayers.push(group);
+    });
+
+    // 5.8 Render current drawing line in real-time
+    if (lineToPlace && drawingLineVertices.length > 0) {
+      const drawingLatLngs = drawingLineVertices
+        .map((v) => planeToLatLng(v.x, v.y, activeCRS))
+        .filter((ll) => Array.isArray(ll) && ll.length === 2 && !isNaN(ll[0]) && !isNaN(ll[1]));
+
+      const drawGroup = L.featureGroup();
+
+      if (drawingLatLngs.length >= 2) {
+        const draftPoly = L.polyline(drawingLatLngs, {
+          color: "#059669",
+          weight: 3.5,
+          dashArray: "6, 6",
+        });
+        drawGroup.addLayer(draftPoly);
+      }
+
+      drawingLatLngs.forEach((latlng, idx) => {
+        const drawPtMarker = L.circleMarker(latlng, {
+          radius: 5.5,
+          color: "#059669",
+          fillColor: "#ffffff",
+          fillOpacity: 1,
+          weight: 2.5,
+        });
+        drawPtMarker.bindTooltip(`${l(`نقطة ${idx + 1}`, `Point ${idx + 1}`, `Point ${idx + 1}`)}`, { permanent: false });
+        drawGroup.addLayer(drawPtMarker);
+      });
+
+      drawGroup.addTo(map);
+      layersRef.current.drawingLineLayers.push(drawGroup);
     }
 
     // Auto fit boundaries on initial load or when parcel/additional selection changes so they synchronize perfectly
@@ -1026,7 +1681,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
         }
       }
     }
-  }, [parcel, additionalParcels, settings, selectedVertexId, selectedSegmentId, mapPreset, activeCRS, isDeleteMode]);
+  }, [parcel, additionalParcels, settings, selectedVertexId, selectedSegmentId, mapPreset, activeCRS, isDeleteMode, symbolToPlace, symbolPlacementLabel, onPlacedSymbolDone, lang, onUpdateParcel, lineToPlace, drawingLineVertices]);
 
   // Active mouse coordinates tracker over Leaflet footprint
   useEffect(() => {
@@ -1075,31 +1730,31 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
       const xVal = parseFloat(gotoX);
       const yVal = parseFloat(gotoY);
       if (isNaN(xVal) || isNaN(yVal)) {
-        setGotoError(lang === "ar" ? "الرجاء إدخال أرقام صحيحة لـ X و Y" : "Veuillez entrer des coordonnées X et Y valides");
+        setGotoError(l("الرجاء إدخال أرقام صحيحة لـ X و Y", "Veuillez entrer des coordonnées X et Y valides", "Please enter valid X and Y coordinates"));
         return;
       }
 
       try {
         const [lat, lng] = planeToLatLng(xVal, yVal, activeCRS);
         if (isNaN(lat) || isNaN(lng) || !isFinite(lat) || !isFinite(lng)) {
-          setGotoError(lang === "ar" ? "فشل تحويل الإحداثيات المسطحة" : "Échec de conversion des coordonnées Lambert");
+          setGotoError(l("فشل تحويل الإحداثيات المسطحة", "Échec de conversion des coordonnées Lambert", "Lambert coordinate conversion failed"));
           return;
         }
         const latlng = L.latLng(lat, lng);
         setGotoMarkerLatLng(latlng);
         map.flyTo(latlng, 19, { animate: true, duration: 1.5 });
       } catch (err) {
-        setGotoError(lang === "ar" ? "خطأ في معالجة الإحداثيات" : "Erreur de traitement des coordonnées");
+        setGotoError(l("خطأ في معالجة الإحداثيات", "Erreur de traitement des coordonnées", "Coordinate processing error"));
       }
     } else {
       const latVal = parseFloat(gotoLat);
       const lngVal = parseFloat(gotoLng);
       if (isNaN(latVal) || isNaN(lngVal)) {
-        setGotoError(lang === "ar" ? "الرجاء إدخال قيم صحيحة لخط العرض والطول" : "Veuillez saisir des coordonnées géographiques valides");
+        setGotoError(l("الرجاء إدخال قيم صحيحة لخط العرض والطول", "Veuillez saisir des coordonnées géographiques valides", "Please enter valid latitude and longitude values"));
         return;
       }
       if (latVal < -90 || latVal > 90 || lngVal < -180 || lngVal > 180) {
-        setGotoError(lang === "ar" ? "قيم خطوط العرض والطول خارج النطاق المسموح به" : "Valeurs de latitude/longitude hors limites (-90 à 90 / -180 à 180)");
+        setGotoError(l("قيم خطوط العرض والطول خارج النطاق المسموح به", "Valeurs de latitude/longitude hors limites (-90 à 90 / -180 à 180)", "Latitude/Longitude values out of bounds (-90 to 90 / -180 to 180)"));
         return;
       }
 
@@ -1176,10 +1831,10 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
           <button
             onClick={handleRecenter}
             className="bg-slate-800 hover:bg-slate-700 text-white p-2 py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition hover:scale-105 active:scale-95 text-[10px] font-bold"
-            title="Centrer sur la parcelle (تركيز العرض على العقار)"
+            title={l("تركيز العرض على العقار", "Centrer sur la parcelle", "Focus on parcel")}
           >
             <Maximize className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span>تركيز</span>
+            <span>{l("تركيز", "Centrer", "Focus")}</span>
           </button>
 
           {/* Freehand CAD Drawing Mode Toggle */}
@@ -1193,14 +1848,14 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                 ? "bg-amber-600 border border-amber-400 text-white animate-pulse"
                 : "bg-slate-800 hover:bg-slate-700 text-slate-200"
             }`}
-            title="وضع رسم ورسم إضافي حر"
+            title={l("وضع رسم حر", "Mode dessin libre", "Freehand draw mode")}
           >
             {isDrawingMode ? (
               <MousePointer className="w-3.5 h-3.5 text-white animate-spin" />
             ) : (
               <Edit2 className="w-3.5 h-3.5 text-emerald-400" />
             )}
-            <span>رسم حر</span>
+            <span>{l("رسم حر", "Dessin libre", "Freehand")}</span>
           </button>
 
           {/* Delete Mode Toggle (New feature) */}
@@ -1214,17 +1869,17 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                 ? "bg-rose-600 text-white border border-rose-400"
                 : "bg-slate-800 hover:bg-slate-700 text-slate-200"
             }`}
-            title="تفعيل وضع مسح وحذف النقط"
+            title={l("تفعيل وضع حذف النقاط", "Activer le mode suppression des sommets", "Enable vertex deletion mode")}
           >
             <Trash2 className={`w-3.5 h-3.5 ${isDeleteMode ? "text-white" : "text-rose-400"}`} />
-            <span>مسح النقط</span>
+            <span>{l("حذف النقاط", "Supprimer sommets", "Delete vertices")}</span>
           </button>
         </div>
 
         {/* Satellite & Streetmap Base Layer select panel */}
         <div className="bg-slate-900/95 border border-slate-700/80 rounded-xl p-1.5 shadow-2xl flex flex-col gap-1 pointer-events-auto">
-          <span className="text-[7.5px] font-mono text-slate-400 font-bold tracking-wider px-1 mb-1 block">
-            FONDS DE CARTE
+          <span className="text-[7.5px] font-mono text-slate-400 font-bold tracking-wider px-1 mb-1 block uppercase">
+            {l("خلفيات الخريطة", "FONDS DE CARTE", "BASEMAPS")}
           </span>
 
           <button
@@ -1234,10 +1889,10 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                 ? "bg-amber-600 text-white font-black"
                 : "text-slate-300 hover:bg-slate-800"
             }`}
-            title="Plan Cadastral (شبكة كاد)"
+            title={l("شبكة كاد", "Plan Cadastral", "Cadastral Grid")}
           >
             <Grid className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span>شبكة CAD</span>
+            <span>{l("شبكة CAD", "Grille CAD", "CAD Grid")}</span>
           </button>
 
           <button
@@ -1247,7 +1902,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                 ? "bg-amber-600 text-white font-black"
                 : "text-slate-300 hover:bg-slate-800"
             }`}
-            title="Satellite ESRI (صورة جوية إيسري)"
+            title={l("صورة جوية إيسري", "Satellite ESRI", "ESRI Satellite")}
           >
             <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
             <span>SAT Esri</span>
@@ -1260,7 +1915,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                 ? "bg-amber-600 text-white font-black"
                 : "text-slate-300 hover:bg-slate-800"
             }`}
-            title="Google Satellite Hybrid (صور خرائط جوجل مجسمة مدمجة)"
+            title={l("خرائط جوجل الجوية", "Google Satellite Hybride", "Google Satellite")}
           >
             <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
             <span>SAT Google</span>
@@ -1273,10 +1928,10 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                 ? "bg-amber-600 text-white font-black"
                 : "text-slate-300 hover:bg-slate-800"
             }`}
-            title="OpenStreetMap Standard (خريطة شوارع)"
+            title={l("خريطة الشوارع", "OpenStreetMap", "OpenStreetMap")}
           >
             <Layers className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <span>خريطة OSM</span>
+            <span>{l("خريطة OSM", "Carte OSM", "OSM Map")}</span>
           </button>
         </div>
       </div>
@@ -1300,10 +1955,10 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                 ? "bg-amber-600 border-amber-400 text-white shadow-lg shadow-amber-500/20"
                 : "bg-slate-900/95 border-slate-700/80 text-slate-200 hover:bg-slate-800"
             }`}
-            title={lang === "ar" ? "الانتقال إلى إحداثيات محددة" : "Aller aux coordonnées"}
+            title={l("الانتقال إلى إحداثيات محددة", "Aller aux coordonnées", "Go to coordinates")}
           >
             <Navigation className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span>{lang === "ar" ? "الانتقال السريع" : "Go To"}</span>
+            <span>{l("الانتقال السريع", "Go To", "Go To")}</span>
           </button>
 
           {/* Measure Button */}
@@ -1317,10 +1972,10 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                 ? "bg-pink-600 border-pink-400 text-white shadow-lg shadow-pink-500/20"
                 : "bg-slate-900/95 border-slate-700/80 text-slate-200 hover:bg-slate-800"
             }`}
-            title={lang === "ar" ? "قياس المسافات على الخريطة" : "Mesurer la distance"}
+            title={l("قياس المسافات على الخريطة", "Mesurer la distance", "Measure distance")}
           >
             <Ruler className="w-3.5 h-3.5 text-pink-400 shrink-0" />
-            <span>{lang === "ar" ? "قياس المسافة" : "Mesure"}</span>
+            <span>{l("قياس المسافة", "Mesure", "Measure")}</span>
           </button>
         </div>
 
@@ -1330,7 +1985,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
             <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
               <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5" />
-                {lang === "ar" ? "تحديد الموقع بالإحداثيات" : "Aller aux Coordonnées"}
+                {l("تحديد الموقع بالإحداثيات", "Aller aux Coordonnées", "Go to Coordinates")}
               </span>
               <button 
                 onClick={() => setIsGotoOpen(false)}
@@ -1354,7 +2009,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                     : "text-slate-400 hover:text-slate-300"
                 }`}
               >
-                {lang === "ar" ? "لومبرت (X/Y)" : "Lambert (X/Y)"}
+                {l("لومبرت (X/Y)", "Lambert (X/Y)", "Lambert (X/Y)")}
               </button>
               <button
                 type="button"
@@ -1368,7 +2023,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                     : "text-slate-400 hover:text-slate-300"
                 }`}
               >
-                {lang === "ar" ? "جغرافي (Lat/Lng)" : "Géographique"}
+                {l("جغرافي (Lat/Lng)", "Géographique", "Geographic (Lat/Lng)")}
               </button>
             </div>
 
@@ -1443,7 +2098,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                   className="flex-1 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-slate-950 font-extrabold text-[10px] py-1.5 rounded transition shadow-md flex items-center justify-center gap-1"
                 >
                   <Navigation className="w-3 h-3 fill-slate-950 text-slate-950" />
-                  <span>{lang === "ar" ? "انتقال" : "Aller à"}</span>
+                  <span>{l("انتقال", "Aller à", "Go to")}</span>
                 </button>
 
                 {gotoMarkerLatLng && (
@@ -1454,7 +2109,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                       setGotoError("");
                     }}
                     className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-1.5 rounded transition"
-                    title={lang === "ar" ? "مسح علامة التحديد" : "Effacer le repère"}
+                    title={l("مسح علامة التحديد", "Effacer le repère", "Clear marker")}
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                   </button>
@@ -1470,7 +2125,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
             <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
               <span className="text-[10px] font-bold text-pink-400 uppercase tracking-wider flex items-center gap-1.5 animate-pulse">
                 <Ruler className="w-3.5 h-3.5" />
-                {lang === "ar" ? "قياس المسافات" : "Mesure de Distance"}
+                {l("قياس المسافات", "Mesure de Distance", "Distance Measurement")}
               </span>
               <button 
                 onClick={() => {
@@ -1488,15 +2143,19 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
             <div className="bg-slate-950 border border-slate-800/80 p-2 rounded text-[9px] leading-relaxed text-slate-300">
               {measurePoints.length === 0 ? (
                 <span className="animate-pulse block text-pink-300">
-                  {lang === "ar"
-                    ? "ℹ️ انقر على أي موقع في الخريطة لوضع أول نقطة قياس."
-                    : "ℹ️ Cliquez sur la carte pour placer le premier point."}
+                  {l(
+                    "ℹ️ انقر على أي موقع في الخريطة لوضع أول نقطة قياس.",
+                    "ℹ️ Cliquez sur la carte pour placer le premier point.",
+                    "ℹ️ Click anywhere on map to place first measurement point."
+                  )}
                 </span>
               ) : (
                 <span>
-                  {lang === "ar"
-                    ? `استمر بالنقر لتمديد القياس. تم تحديد ${measurePoints.length} نقطة.`
-                    : `Continuez à cliquer pour mesurer. ${measurePoints.length} points.`}
+                  {l(
+                    `استمر بالنقر لتمديد القياس. تم تحديد ${measurePoints.length} نقطة.`,
+                    `Continuez à cliquer pour mesurer. ${measurePoints.length} points.`,
+                    `Keep clicking to extend measurement. ${measurePoints.length} points selected.`
+                  )}
                 </span>
               )}
             </div>
@@ -1505,7 +2164,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center bg-slate-950/60 p-2 rounded border border-slate-800/50">
                   <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">
-                    {lang === "ar" ? "المسافة الإجمالية" : "Distance Totale"}
+                    {l("المسافة الإجمالية", "Distance Totale", "Total Distance")}
                   </span>
                   <span className="text-xs font-black text-pink-400 font-mono">
                     {getCumulativeDistance().toFixed(2)} m
@@ -1520,7 +2179,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                     className="bg-slate-800 border border-slate-700 hover:bg-slate-700 disabled:opacity-40 text-slate-300 text-[9px] font-bold py-1.5 rounded transition flex items-center justify-center gap-1"
                   >
                     <RotateCcw className="w-3 h-3" />
-                    <span>{lang === "ar" ? "تراجع" : "Annuler"}</span>
+                    <span>{l("تراجع", "Annuler", "Undo")}</span>
                   </button>
                   <button
                     type="button"
@@ -1529,7 +2188,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
                     className="bg-pink-950 hover:bg-pink-900 border border-pink-800 text-pink-200 text-[9px] font-bold py-1.5 rounded transition flex items-center justify-center gap-1"
                   >
                     <Trash2 className="w-3 h-3" />
-                    <span>{lang === "ar" ? "مسح الكل" : "Effacer tout"}</span>
+                    <span>{l("مسح الكل", "Effacer tout", "Clear All")}</span>
                   </button>
                 </div>
               </div>
@@ -1545,7 +2204,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
               className="w-full bg-slate-850 hover:bg-slate-800 hover:text-white text-slate-200 text-[9px] font-bold py-1.5 rounded transition flex items-center justify-center gap-1 border border-slate-700/60"
             >
               <Check className="w-3 h-3 text-emerald-400" />
-              <span>{lang === "ar" ? "إنهاء وإغلاق" : "Terminer"}</span>
+              <span>{l("إنهاء وإغلاق", "Terminer", "Finish & Close")}</span>
             </button>
           </div>
         )}
@@ -1555,12 +2214,12 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
       {isDrawingMode && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-amber-500 text-white border border-amber-400 shadow-xl px-4 py-2 rounded-full font-bold text-[11px] flex items-center gap-2 animate-bounce">
           <Edit2 className="w-3.5 h-3.5" />
-          <span>وضع الرسم نشط: انقر في أي مكان على الخريطة لإضافة نقاط حدودية</span>
+          <span>{l("وضع الرسم نشط: انقر في أي مكان على الخريطة لإضافة نقاط حدودية", "Mode dessin actif : cliquez n'importe où sur la carte pour ajouter des sommets", "Drawing mode active: click anywhere on map to add vertices")}</span>
           <button
             onClick={() => setDrawingMode(false)}
             className="ml-2 bg-amber-700 hover:bg-amber-800 text-white font-black px-2 py-0.5 rounded text-[10px]"
           >
-            إنهاء
+            {l("إنهاء", "Terminer", "Finish")}
           </button>
         </div>
       )}
@@ -1568,15 +2227,16 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
       {isDeleteMode && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-rose-600 text-white border border-rose-500 shadow-xl px-4 py-2 rounded-full font-bold text-[11px] flex items-center gap-2 animate-bounce">
           <Trash2 className="w-3.5 h-3.5 text-white" />
-          <span>وضع الحذف نشط: انقر مباشرة فوق أي رأس (Borne) على الخريطة لإزالته نهائياً</span>
+          <span>{l("وضع الحذف نشط: انقر مباشرة فوق أي رأس (Borne) على الخريطة لإزالته نهائياً", "Mode suppression actif : cliquez directement sur une borne pour la supprimer", "Delete mode active: click directly on a borne to remove it")}</span>
           <button
             onClick={() => setDeleteMode(false)}
             className="ml-2 bg-rose-800 hover:bg-rose-900 text-white font-black px-2 py-0.5 rounded text-[10px]"
           >
-            إلغاء المعاينة
+            {l("إلغاء المعاينة", "Annuler", "Cancel")}
           </button>
         </div>
       )}
+
 
       {/* Bottom-Right indicator showing the currently active view preset details */}
       <div className="absolute bottom-16 right-4 z-20 pointer-events-none bg-slate-900/85 border border-slate-700/50 backdrop-blur-md px-3 py-1.5 rounded-lg text-[9px] text-slate-300 font-bold select-none uppercase tracking-widest font-mono flex items-center gap-2">
@@ -1599,7 +2259,7 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
           <div className="flex items-center gap-1.5 text-slate-400">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
             <span className="font-bold text-slate-300">
-              {lang === "ar" ? "إحداثيات مؤشر الماوس الحية:" : "Coordonnées de la souris :"}
+              {l("إحداثيات مؤشر الماوس الحية:", "Coordonnées de la souris :", "Live Mouse Coordinates:")}
             </span>
           </div>
 
@@ -1628,9 +2288,11 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
             <div className="text-slate-400 font-sans italic text-[11px] select-none py-1 flex items-center gap-2">
               <MousePointer className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0" />
               <span>
-                {lang === "ar" 
-                  ? "حرّك مؤشر الفأرة (الماوس) فوق الخريطة لعرض الإحداثيات الحية ولومبرت" 
-                  : "Survolez l'image aérienne avec la souris pour afficher les coordonnées"}
+                {l(
+                  "حرّك مؤشر الفأرة (الماوس) فوق الخريطة لعرض الإحداثيات الحية ولومبرت",
+                  "Survolez l'image aérienne avec la souris pour afficher les coordonnées",
+                  "Hover mouse over map to view live Lambert coordinates"
+                )}
               </span>
             </div>
           )}
@@ -1640,13 +2302,493 @@ export const ParcelMap: React.FC<ParcelMapProps> = ({
         <div className="flex items-center gap-2 text-[10.5px] text-slate-400 font-mono self-end md:self-auto bg-slate-900 border border-slate-800 px-3 py-1 rounded shadow-inner select-none transition-all hover:border-slate-700">
           <Globe className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-spin-slow" style={{ animationDuration: "10s" }} />
           <span className="font-bold text-slate-300">
-            {lang === "ar" ? "نظام الإسقاط:" : "Projection :"}
+            {l("نظام الإسقاط:", "Projection :", "Projection:")}
           </span>
           <span className="text-amber-300 font-semibold truncate max-w-[200px]" title={crsLabel}>
             {activeCRS} - {crsLabel}
           </span>
         </div>
       </div>
+
+      {/* Modern Interactive CAD/GIS Symbol & Custom Text Editor Modal */}
+      {editingSymbol && (
+        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div 
+            className="bg-slate-900 border-2 border-slate-700/80 rounded-2xl p-5 shadow-2xl max-w-sm w-full text-slate-100 flex flex-col gap-4 animate-fade-in relative"
+            dir={lang === "ar" ? "rtl" : "ltr"}
+            style={{ animationDuration: "0.2s" }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">⚙️</span>
+                <h3 className="font-bold text-sm text-amber-400 tracking-wide">
+                  {l("تعديل الرمز والكتابة الحرة", "Personnaliser le Symbole / Texte", "Customize Symbol / Custom Text")}
+                </h3>
+              </div>
+              <button 
+                onClick={() => setEditingSymbol(null)}
+                className="text-slate-400 hover:text-white font-bold text-base transition bg-slate-800 hover:bg-slate-700 w-6 h-6 rounded-full flex items-center justify-center"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Field 1: Custom Label / Text */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                {editingSymbol.type === "custom_text" 
+                  ? l("نص الكتابة الحرة:", "Texte libre :", "Custom text:")
+                  : l("مسمى توضيحي للرمز (اختياري):", "Étiquette du symbole (optionnel) :", "Symbol label (optional):")}
+              </label>
+              <input
+                type="text"
+                value={editingSymbol.label || ""}
+                placeholder={editingSymbol.type === "custom_text" ? l("كتابة حرة", "Texte libre", "Custom text") : ""}
+                onChange={(e) => {
+                  const labelVal = e.target.value;
+                  const updatedSym = { ...editingSymbol, label: labelVal };
+                  setEditingSymbol(updatedSym);
+                  if (onUpdateParcel) {
+                    const updatedSymbols = (parcel.symbols || []).map((s) => {
+                      const sId = s.id || `${s.x}_${s.y}_${s.type}`;
+                      const symId = editingSymbol.id || `${editingSymbol.x}_${editingSymbol.y}_${editingSymbol.type}`;
+                      return sId === symId ? updatedSym : s;
+                    });
+                    onUpdateParcel({
+                      ...parcel,
+                      symbols: updatedSymbols,
+                    });
+                  }
+                }}
+                className="bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500 w-full font-semibold transition"
+              />
+            </div>
+
+            {/* Field 2: Size Adjuster Buttons */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                {editingSymbol.type === "custom_text"
+                  ? (lang === "ar" ? "حجم خط الكتابة الحرة:" : "Taille de la police :")
+                  : (lang === "ar" ? "حجم الرمز على الخريطة:" : "Taille du symbole :")}
+              </label>
+              <div className="flex items-center justify-between bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentVal = editingSymbol.type === "custom_text" ? (editingSymbol.fontSize || 12) : (editingSymbol.size || 24);
+                    const minLimit = editingSymbol.type === "custom_text" ? 8 : 10;
+                    const newVal = Math.max(minLimit, currentVal - 2);
+                    
+                    let updatedSym: MapSymbol;
+                    if (editingSymbol.type === "custom_text") {
+                      updatedSym = { ...editingSymbol, fontSize: newVal };
+                    } else {
+                      updatedSym = { ...editingSymbol, size: newVal };
+                    }
+                    setEditingSymbol(updatedSym);
+                    if (onUpdateParcel) {
+                      const updatedSymbols = (parcel.symbols || []).map((s) => {
+                        const sId = s.id || `${s.x}_${s.y}_${s.type}`;
+                        const symId = editingSymbol.id || `${editingSymbol.x}_${editingSymbol.y}_${editingSymbol.type}`;
+                        if (sId === symId) {
+                          if (editingSymbol.type === "custom_text") {
+                            return { ...s, fontSize: newVal };
+                          } else {
+                            return { ...s, size: newVal };
+                          }
+                        }
+                        return s;
+                      });
+                      onUpdateParcel({
+                        ...parcel,
+                        symbols: updatedSymbols,
+                      });
+                    }
+                  }}
+                  className="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 flex items-center justify-center font-bold text-sm transition active:scale-95 cursor-pointer shadow-sm"
+                  title={l("تقليص الحجم", "Diminuer la taille", "Decrease size")}
+                >
+                  ▼
+                </button>
+
+                <div className="flex flex-col items-center justify-center">
+                  <span className="text-xs font-mono font-black text-amber-400">
+                    {editingSymbol.type === "custom_text" ? (editingSymbol.fontSize || 12) : (editingSymbol.size || 24)}
+                  </span>
+                  <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500 font-sans">
+                    Pixels
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentVal = editingSymbol.type === "custom_text" ? (editingSymbol.fontSize || 12) : (editingSymbol.size || 24);
+                    const maxLimit = editingSymbol.type === "custom_text" ? 72 : 120;
+                    const newVal = Math.min(maxLimit, currentVal + 2);
+                    
+                    let updatedSym: MapSymbol;
+                    if (editingSymbol.type === "custom_text") {
+                      updatedSym = { ...editingSymbol, fontSize: newVal };
+                    } else {
+                      updatedSym = { ...editingSymbol, size: newVal };
+                    }
+                    setEditingSymbol(updatedSym);
+                    if (onUpdateParcel) {
+                      const updatedSymbols = (parcel.symbols || []).map((s) => {
+                        const sId = s.id || `${s.x}_${s.y}_${s.type}`;
+                        const symId = editingSymbol.id || `${editingSymbol.x}_${editingSymbol.y}_${editingSymbol.type}`;
+                        if (sId === symId) {
+                          if (editingSymbol.type === "custom_text") {
+                            return { ...s, fontSize: newVal };
+                          } else {
+                            return { ...s, size: newVal };
+                          }
+                        }
+                        return s;
+                      });
+                      onUpdateParcel({
+                        ...parcel,
+                        symbols: updatedSymbols,
+                      });
+                    }
+                  }}
+                  className="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 flex items-center justify-center font-bold text-sm transition active:scale-95 cursor-pointer shadow-sm"
+                  title={l("زيادة الحجم", "Augmenter la taille", "Increase size")}
+                >
+                  ▲
+                </button>
+              </div>
+            </div>
+
+            {/* Field 3: Color swatches & Picker */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                {l("تخصيص لون الرمز أو النص:", "Couleur du symbole / texte :", "Customize Symbol / Text Color:")}
+              </label>
+              <div className="flex flex-wrap items-center gap-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                {[
+                  "#1c1917", // Dark Charcoal / Black
+                  "#2563eb", // Royal Blue
+                  "#16a34a", // Forest Green
+                  "#dc2626", // Crimson Red
+                  "#d97706", // Amber Orange
+                  "#9333ea", // Amethyst Purple
+                  "#0d9488", // Teal
+                  "#ffffff", // Clean White
+                ].map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => {
+                      const updatedSym = { ...editingSymbol, color: c };
+                      setEditingSymbol(updatedSym);
+                      if (onUpdateParcel) {
+                        const updatedSymbols = (parcel.symbols || []).map((s) => {
+                          const sId = s.id || `${s.x}_${s.y}_${s.type}`;
+                          const symId = editingSymbol.id || `${editingSymbol.x}_${editingSymbol.y}_${editingSymbol.type}`;
+                          return sId === symId ? { ...s, color: c } : s;
+                        });
+                        onUpdateParcel({
+                          ...parcel,
+                          symbols: updatedSymbols,
+                        });
+                      }
+                    }}
+                    style={{ backgroundColor: c }}
+                    className={`w-6 h-6 rounded-full border-2 transition hover:scale-110 active:scale-95 cursor-pointer ${
+                      (editingSymbol.color || (
+                        editingSymbol.type === "tree" ? "#16a34a" :
+                        editingSymbol.type === "cemetery" ? "#1c1917" :
+                        editingSymbol.type === "well" ? "#2563eb" :
+                        editingSymbol.type === "building" ? "#dc2626" :
+                        editingSymbol.type === "mosque" ? "#d97706" :
+                        editingSymbol.type === "palm" ? "#059669" :
+                        editingSymbol.type === "reed" ? "#854d0e" :
+                        editingSymbol.type === "grass" ? "#16a34a" :
+                        editingSymbol.type === "transformer" ? "#ea580c" :
+                        editingSymbol.type === "olive" ? "#65a30d" :
+                        editingSymbol.type === "geodetic" ? "#dc2626" :
+                        editingSymbol.type === "spring" ? "#0284c7" :
+                        "#1c1917"
+                      )) === c ? "border-amber-400 scale-110 shadow-md shadow-amber-400/20" : "border-slate-800"
+                    }`}
+                  />
+                ))}
+                
+                {/* Visual Separator */}
+                <span className="w-[1px] h-5 bg-slate-800 mx-1"></span>
+
+                {/* Color input picker */}
+                <div className="relative flex items-center justify-center w-7 h-7 rounded-lg overflow-hidden border border-slate-700 bg-slate-800 hover:scale-105 active:scale-95 transition cursor-pointer">
+                  <input
+                    type="color"
+                    value={editingSymbol.color || "#2563eb"}
+                    onChange={(e) => {
+                      const colVal = e.target.value;
+                      const updatedSym = { ...editingSymbol, color: colVal };
+                      setEditingSymbol(updatedSym);
+                      if (onUpdateParcel) {
+                        const updatedSymbols = (parcel.symbols || []).map((s) => {
+                          const sId = s.id || `${s.x}_${s.y}_${s.type}`;
+                          const symId = editingSymbol.id || `${editingSymbol.x}_${editingSymbol.y}_${editingSymbol.type}`;
+                          return sId === symId ? { ...s, color: colVal } : s;
+                        });
+                        onUpdateParcel({
+                          ...parcel,
+                          symbols: updatedSymbols,
+                        });
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                  />
+                  <span className="text-[10px] pointer-events-none">🎨</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Field 4: Bulk apply settings */}
+            {(() => {
+              const getEditingSymbolTitle = () => {
+                if (!editingSymbol) return "";
+                const type = editingSymbol.type;
+                if (lang === "ar") {
+                  return type === "tree" ? "شجرة" :
+                         type === "well" ? "بئر" :
+                         type === "cemetery" ? "مقبرة" :
+                         type === "building" ? "بناء" :
+                         type === "mosque" ? "مسجد" :
+                         type === "palm" ? "نخيل" :
+                         type === "reed" ? "قصب" :
+                         type === "grass" ? "أعشاب" :
+                         type === "transformer" ? "محول كهربائي" :
+                         type === "olive" ? "زيتون" :
+                         type === "geodetic" ? "نقطة جيوديزية" :
+                         type === "spring" ? "عين ماء" :
+                         type === "custom_text" ? "نص مخصص" : "";
+                } else if (lang === "en") {
+                  return type === "tree" ? "Tree" :
+                         type === "well" ? "Well" :
+                         type === "cemetery" ? "Cemetery" :
+                         type === "building" ? "Building" :
+                         type === "mosque" ? "Mosque" :
+                         type === "palm" ? "Palm" :
+                         type === "reed" ? "Reed" :
+                         type === "grass" ? "Grass" :
+                         type === "transformer" ? "Transformer" :
+                         type === "olive" ? "Olive tree" :
+                         type === "geodetic" ? "Geodetic point" :
+                         type === "spring" ? "Water spring" :
+                         type === "custom_text" ? "Custom text" : "";
+                } else {
+                  return type === "tree" ? "Arbre" :
+                         type === "well" ? "Puits" :
+                         type === "cemetery" ? "Cimetière" :
+                         type === "building" ? "Bâtiment" :
+                         type === "mosque" ? "Mosquée" :
+                         type === "palm" ? "Palmier" :
+                         type === "reed" ? "Roseau" :
+                         type === "grass" ? "Herbes" :
+                         type === "transformer" ? "Transfo" :
+                         type === "olive" ? "Olivier" :
+                         type === "geodetic" ? "Pt Géodésique" :
+                         type === "spring" ? "Source d'eau" :
+                         type === "custom_text" ? "Texte personnalisé" : "";
+                }
+              };
+              const editingSymbolTitle = getEditingSymbolTitle();
+              const sameTypeCount = (parcel.symbols || []).filter(s => s.type === editingSymbol.type).length;
+
+              if (sameTypeCount <= 1) return null;
+
+              return (
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2 mt-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      {l("تعديل جماعي لنفس الرمز:", "Modification collective :", "Bulk edit for same symbol:")}
+                    </span>
+                    <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] px-1.5 py-0.5 rounded-full font-bold font-mono">
+                      {l(`العدد الحالي: ${sameTypeCount}`, `Total : ${sameTypeCount}`, `Current total: ${sameTypeCount}`)}
+                    </span>
+                  </div>
+                  <p className="text-[9.5px] text-slate-400 leading-normal font-sans">
+                    {l(
+                      "تطبيق اللون والحجم الحاليين على جميع الرموز من هذا النوع دفعة واحدة.",
+                      "Appliquer la taille et la couleur actuelles à tous les symboles de ce type.",
+                      "Apply current size and color to all symbols of this type at once."
+                    )}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetType = editingSymbol.type;
+                      const targetColor = editingSymbol.color;
+                      const targetSize = editingSymbol.size;
+                      const targetFontSize = editingSymbol.fontSize;
+                      
+                      if (onUpdateParcel) {
+                        const updatedSymbols = (parcel.symbols || []).map((s) => {
+                          if (s.type === targetType) {
+                            return {
+                              ...s,
+                              color: targetColor,
+                              size: targetSize,
+                              fontSize: targetFontSize,
+                            };
+                          }
+                          return s;
+                        });
+                        onUpdateParcel({
+                          ...parcel,
+                          symbols: updatedSymbols,
+                        });
+                      }
+                    }}
+                    className="w-full bg-slate-800 hover:bg-slate-700 hover:text-amber-400 border border-slate-700 text-slate-200 font-bold py-1.5 rounded-lg text-[10px] transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span>👥</span>
+                    <span>
+                      {l(
+                        `تحديث جميع رموز (${editingSymbolTitle})`,
+                        `Mettre à jour tous les (${editingSymbolTitle})`,
+                        `Update all (${editingSymbolTitle}) symbols`
+                      )}
+                    </span>
+                  </button>
+                </div>
+              );
+            })()}
+
+            {/* Control Actions */}
+            <div className="flex flex-col gap-2 mt-2 border-t border-slate-800 pt-3">
+              <button
+                type="button"
+                onClick={() => setEditingSymbol(null)}
+                className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-2.5 rounded-lg text-xs transition active:scale-98 shadow-md shadow-amber-500/10 flex items-center justify-center gap-1.5"
+              >
+                <span>✓</span>
+                <span>{l("حفظ التغييرات وإغلاق", "Terminer et enregistrer", "Save changes and close")}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Line Drawing Status & Controls Overlay */}
+      {lineToPlace && (
+        <div className="absolute bottom-4 right-4 z-20 bg-slate-900/95 border border-emerald-500/50 shadow-2xl rounded-2xl p-3 max-w-[280px] flex flex-col gap-2.5 text-slate-100 pointer-events-auto animate-fade-in">
+          <div className="flex items-center gap-2 border-b border-slate-800 pb-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="text-[11px] font-bold tracking-wide text-slate-200">
+              {l("وضع رسم خط/مسار جديد", "Mode tracé de ligne", "New line/path drawing mode")}
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <div className="flex justify-between text-[10.5px]">
+              <span className="text-slate-400">{l("نوع الخط:", "Type :", "Line type:")}</span>
+              <span className="font-bold text-amber-400">
+                {lineToPlace === "footpath" ? l("طريق رجلية", "Sentier", "Footpath") :
+                 lineToPlace === "agri_road" ? l("طريق فلاحية", "Chemin agricole", "Agricultural Road") :
+                 lineToPlace === "power_line" ? l("خط التيار الكهربائي", "Ligne électrique", "Power Line") :
+                 lineToPlace === "water_pipe" ? l("خط أنبوب الماء", "Conduite d'eau", "Water Pipe") :
+                 lineToPlace === "sewer_pipe" ? l("خط أنبوب تطهير السائل", "Réseau d'assainissement", "Sewer Pipe") : ""}
+              </span>
+            </div>
+            <div className="flex justify-between text-[10.5px]">
+              <span className="text-slate-400">{l("عدد النقاط الحالية:", "Points tracés :", "Current points count:")}</span>
+              <span className="font-mono font-bold text-emerald-400">{drawingLineVertices.length}</span>
+            </div>
+            {linePlacementLabel && (
+              <div className="flex justify-between text-[10.5px]">
+                <span className="text-slate-400">{l("التسمية:", "Étiquette :", "Label:")}</span>
+                <span className="font-bold text-slate-300 truncate max-w-[120px]">{linePlacementLabel}</span>
+              </div>
+            )}
+          </div>
+
+          <p className="text-[9.5px] text-slate-400 leading-normal border-t border-slate-800 pt-1.5">
+            {l(
+              "انقر على الخريطة لوضع النقاط بالتتابع لرسم الخط.",
+              "Cliquez sur la carte pour tracer les points de la ligne.",
+              "Click on the map to place points sequentially to draw the line."
+            )}
+          </p>
+
+          <div className="flex flex-col gap-1.5 pt-1">
+            <button
+              type="button"
+              disabled={drawingLineVertices.length < 2}
+              onClick={() => {
+                if (drawingLineVertices.length < 2) return;
+                // Save the line!
+                const newLine = {
+                  id: "line_" + Date.now() + "_" + Math.floor(Math.random() * 100000),
+                  type: lineToPlace,
+                  vertices: [...drawingLineVertices],
+                  label: linePlacementLabel || undefined,
+                  spacing: customLineSpacing,
+                  thickness: customLineThickness,
+                  color: customLineColor || undefined,
+                  labelColor: customLabelColor || undefined,
+                  labelSize: customLabelSize || undefined,
+                };
+                if (onUpdateParcel) {
+                  onUpdateParcel({
+                    ...parcel,
+                    linearFeatures: [...(parcel.linearFeatures || []), newLine],
+                  });
+                }
+                setDrawingLineVertices([]);
+                if (onPlacedLineDone) {
+                  onPlacedLineDone();
+                }
+              }}
+              className={`w-full py-1.5 px-2.5 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1.5 ${
+                drawingLineVertices.length >= 2
+                  ? "bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
+                  : "bg-slate-800 text-slate-500 cursor-not-allowed"
+              }`}
+            >
+              <span>💾</span>
+              <span>{l("حفظ وتثبيت الخط", "Sauvegarder la ligne", "Save and fix line")}</span>
+            </button>
+
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                disabled={drawingLineVertices.length === 0}
+                onClick={() => {
+                  setDrawingLineVertices((prev) => prev.slice(0, -1));
+                }}
+                className={`py-1 px-1.5 rounded-lg text-[9.5px] font-bold transition flex items-center justify-center gap-1 ${
+                  drawingLineVertices.length > 0
+                    ? "bg-slate-800 hover:bg-slate-750 text-amber-400 cursor-pointer"
+                    : "bg-slate-800/40 text-slate-600 cursor-not-allowed"
+                }`}
+              >
+                <span>↩️</span>
+                <span>{l("تراجع", "Retour", "Undo")}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setDrawingLineVertices([]);
+                  if (onPlacedLineDone) {
+                    onPlacedLineDone();
+                  }
+                }}
+                className="py-1 px-1.5 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/40 text-rose-300 rounded-lg text-[9.5px] font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+              >
+                <span>❌</span>
+                <span>{l("إلغاء", "Annuler", "Cancel")}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 interface SecretStatsPanelProps {
-  lang: "ar" | "fr";
+  lang: "ar" | "fr" | "en";
   onClose: () => void;
   geoInfo: {
     city: string;
@@ -34,6 +34,7 @@ interface SecretStatsPanelProps {
 
 export function SecretStatsPanel({ lang, onClose, geoInfo, isLoadingGeo, localVisits }: SecretStatsPanelProps) {
   const isAr = lang === "ar";
+  const isEn = lang === "en";
   const [activeTab, setActiveTab] = useState<"cities" | "devices" | "sources" | "telemetry">("cities");
 
   // GoatCounter Configuration States

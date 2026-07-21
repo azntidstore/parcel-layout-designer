@@ -11,9 +11,11 @@ import {
   getOutsidePoint,
   calculateCentroid,
   planeToLatLng,
+  getParallelPolylines,
 } from "../utils/gisUtils";
 import { Compass, Printer, ArrowLeft, Layers, Download, Loader2, ExternalLink } from "lucide-react";
 import { SupportedCRS } from "../utils/projectionManager";
+import { getLocalizedParcelName } from "../utils/translations";
 
 // Helper functions for converting oklch/oklab/lab/lch colors to standard rgb/rgba format for html2canvas compatibility
 function convertOklabToRgb(okL: number, okA: number, okB: number, alphaStr: string | null): string {
@@ -222,6 +224,7 @@ interface PrintSheetLayoutProps {
   settings: DocumentSettings;
   onBackToEditor: () => void;
   initialLayoutType?: "type1" | "type2";
+  lang?: "ar" | "fr" | "en";
 }
 
 export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
@@ -230,7 +233,9 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
   settings,
   onBackToEditor,
   initialLayoutType = "type1",
+  lang = "ar",
 }) => {
+  const l = (ar: string, fr: string, en?: string) => lang === "ar" ? ar : lang === "en" ? (en || fr) : fr;
   const [printLayoutType, setPrintLayoutType] = useState<"type1" | "type2" | undefined>(initialLayoutType);
 
   useEffect(() => {
@@ -310,7 +315,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
     const pCalculatedWidthMm = pNumColumns * colWidthMm + (pNumColumns - 1) * gapWidthMm + paddingAndBordersMm;
     return {
       parcelId: p.id,
-      parcelName: p.name,
+      parcelName: getLocalizedParcelName(p, lang),
       totalPoints: pTotalPoints,
       numColumns: pNumColumns,
       rowsPerColumn: pRowsPerColumn,
@@ -798,7 +803,8 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
       const imgData = canvas.toDataURL("image/jpeg", 0.95);
       pdf.addImage(imgData, "JPEG", 0, 0, totalWidthMm, maxPageHeightMm);
 
-      const safeName = parcel.name ? parcel.name.trim().replace(/[^a-zA-Z0-9\u0600-\u06FF]+/g, "_") : "Plan";
+      const localizedName = getLocalizedParcelName(parcel, lang);
+      const safeName = localizedName ? localizedName.trim().replace(/[^a-zA-Z0-9\u0600-\u06FF]+/g, "_") : "Plan";
       pdf.save(`Plan_Parcellaire_${safeName}.pdf`);
     } catch (err) {
       console.error("PDF Export Error:", err);
@@ -975,12 +981,14 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
           </div>
           <div>
             <h1 className="text-sm font-bold text-slate-800">
-              {printLayoutType === "type1" ? "Visualisation du Dossier d'Impression (الطباعة مرفوقة بصفحة الغلاف)" : "Visualisation du Plan Parcellaire (الطباعة بدون صفحة الغلاف)"}
+              {printLayoutType === "type1" 
+                ? l("معاينة ملف الطباعة (مع صفحة الغلاف)", "Visualisation du Dossier d'Impression (avec page de garde)", "Printing Dossier Preview (with cover page)") 
+                : l("معاينة تصميم القطعة (بدون صفحة الغلاف)", "Visualisation du Plan Parcellaire (sans page de garde)", "Parcel Plan Preview (without cover page)")}
             </h1>
             <p className="text-[11px] text-slate-500">
               {printLayoutType === "type1" 
-                ? "Dossier d'impression complet (Page 1: page de garde + Page 2: plan de détails)"
-                : "Plan parcellaire seul (Page unique du plan horizontal sans page de garde)"}
+                ? l("الملف التقني الكامل (الصفحة 1: صفحة الغلاف + الصفحة 2: الخريطة والجدول)", "Dossier d'impression complet (Page 1: page de garde + Page 2: plan de détails)", "Full print dossier (Page 1: Cover page + Page 2: Details plan)")
+                : l("تصميم القطعة بمفرده (صفحة أفوقية واحدة بدون صفحة الغلاف)", "Plan parcellaire seul (Page unique du plan horizontal sans page de garde)", "Single parcel plan (Single horizontal page without cover page)")}
             </p>
           </div>
         </div>
@@ -994,9 +1002,9 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                   ? "bg-amber-600 text-white shadow-sm" 
                   : "text-stone-500 hover:text-stone-850"
               }`}
-              title="Page de Garde + Page de Détails"
+              title={l("صفحة الغلاف + الخريطة التفصيلية", "Page de Garde + Page de Détails", "Cover Page + Details Page")}
             >
-              الطباعة مرفوقة بصفحة الغلاف
+              {l("الطباعة مرفوقة بصفحة الغلاف", "Impression avec page de garde", "Print with Cover Page")}
             </button>
             <button
               onClick={() => setPrintLayoutType("type2")}
@@ -1005,15 +1013,15 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                   ? "bg-amber-600 text-white shadow-sm animate-none" 
                   : "text-stone-500 hover:text-stone-850"
               }`}
-              title="Plan Parcellaire Seul"
+              title={l("تصميم القطعة الأرضية بمفرده", "Plan Parcellaire Seul", "Single Parcel Plan Only")}
             >
-              الطباعة بدون صفحة الغلاف
+              {l("الطباعة بدون صفحة الغلاف", "Impression sans page de garde", "Print without Cover Page")}
             </button>
           </div>
 
           {/* Editable Grid Interval */}
           <div className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-stone-600 shrink-0">
-            <span className="text-[10px] text-stone-500 font-extrabold uppercase">Grille (m) :</span>
+            <span className="text-[10px] text-stone-500 font-extrabold uppercase">{l("الشبكة (م) :", "Grille (m) :", "Grid (m):")}</span>
             <input
               type="number"
               min="1"
@@ -1038,14 +1046,14 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
 
           {/* Scale Selection Dropdown */}
           <div className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-stone-600 shrink-0">
-            <span className="text-[10px] text-stone-500 font-extrabold uppercase">Échelle :</span>
+            <span className="text-[10px] text-stone-500 font-extrabold uppercase">{l("المقياس :", "Échelle :", "Scale:")}</span>
             <select
               value={scaleMode}
               onChange={(e) => setScaleMode(e.target.value as any)}
               className="bg-transparent border-none outline-none pr-1 py-0 font-extrabold text-slate-800 cursor-pointer text-xs"
             >
-              <option value="custom">⚠️ Saisie Manuelle (Custom)</option>
-              <option value="auto">Auto-optimisé ({getStandardScaleValue(refNumericScale)})</option>
+              <option value="custom">{l("⚠️ إدخال يدوي (تخصيص)", "⚠️ Saisie Manuelle (Custom)", "⚠️ Manual Entry (Custom)")}</option>
+              <option value="auto">{l("تلقائي محسن", "Auto-optimisé", "Auto-optimized")} ({getStandardScaleValue(refNumericScale)})</option>
               <option value="100">1 / 100</option>
               <option value="250">1 / 250</option>
               <option value="500">1 / 500</option>
@@ -1082,7 +1090,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
 
           {/* Sizing Scale Selector */}
           <div className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-stone-600 print:hidden shrink-0">
-            <span className="text-[10px] text-stone-500 font-extrabold uppercase">Aperçu :</span>
+            <span className="text-[10px] text-stone-500 font-extrabold uppercase">{l("المعاينة :", "Aperçu :", "Preview:")}</span>
             <select
               value={zoomMode}
               onChange={(e) => {
@@ -1095,7 +1103,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
               }}
               className="bg-transparent border-none outline-none pr-1 py-0 font-extrabold text-slate-800 cursor-pointer text-xs"
             >
-              <option value="auto">Auto-ajusté</option>
+              <option value="auto">{l("تلقائي", "Auto-ajusté", "Auto-fit")}</option>
               <option value="0.5">50%</option>
               <option value="0.65">65%</option>
               <option value="0.8">80%</option>
@@ -1112,7 +1120,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
               onChange={(e) => setShowAerialArrow(e.target.checked)}
               className="w-3.5 h-3.5 rounded text-red-650 focus:ring-red-500 border-stone-300 accent-red-600 cursor-pointer"
             />
-            <span className="text-[11px] text-stone-700 font-bold">Flèche Projet (Vue Aérienne)</span>
+            <span className="text-[11px] text-stone-700 font-bold">{l("سهم مشروع الموقع", "Flèche Projet (Vue Aérienne)", "Project Arrow (Aerial View)")}</span>
           </label>
 
           <button
@@ -1120,17 +1128,17 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-stone-600 bg-stone-100 ring-1 ring-stone-200 hover:bg-stone-200 rounded-lg transition"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Retour</span>
+            <span>{l("رجوع", "Retour", "Back")}</span>
           </button>
           
           <button
             onClick={handleDownloadPDF}
             disabled={isExporting}
             className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 disabled:bg-stone-50 disabled:text-stone-350 disabled:cursor-not-allowed rounded-lg transition"
-            title="Génération haute fidélité en une seule planche composite"
+            title={l("توليد ملف PDF عالي الجودة", "Génération haute fidélité en une seule planche composite", "High-fidelity PDF generation")}
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Télécharger PDF (Composite)</span>
+            <span>{l("تحميل PDF", "Télécharger PDF (Composite)", "Download PDF")}</span>
           </button>
 
           <button
@@ -1139,9 +1147,10 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
             className="flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 hover:scale-[1.02] shadow-md hover:shadow-lg rounded-lg transition duration-200 outline outline-2 outline-offset-2 outline-emerald-500/20"
           >
             <Printer className="w-4 h-4" />
-            <span>Imprimer</span>
+            <span>{l("طباعة", "Imprimer", "Print")}</span>
           </button>
         </div>
+
       </div>
 
       {/* Permanent High-Fidelity Print & PDF Settings Guide (FR) */}
@@ -1293,7 +1302,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                       Propriété dite :
                     </span>
                     <span className="font-extrabold text-[17.5px] text-slate-900 leading-snug break-words">
-                      {parcel.name}
+                      {getLocalizedParcelName(parcel, lang)}
                     </span>
                   </div>
                   <div className="flex flex-col justify-between border-l-2 border-r-2 border-stone-300 px-5">
@@ -1418,7 +1427,7 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
             <div 
               className="relative bg-white overflow-hidden flex flex-col justify-between w-full h-full"
             >
-              {/* Absolute-positioned coordinates table in the right margin of Page 2 */}
+              {/* Absolute-positioned coordinates and alignments tables in the right margin of Page 2 */}
               <div 
                 className="absolute bg-stone-50/90 border-2 border-stone-800 rounded-lg p-3 z-20 font-sans flex flex-col shadow-md hover:bg-stone-50 select-none transition-colors duration-150"
                 style={{
@@ -1429,67 +1438,72 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                   maxHeight: `${mapHeight / 2.5}mm`,
                 }}
               >
-                <span className="text-[11px] font-black text-stone-900 uppercase tracking-widest mb-2 block text-center border-b-2 border-stone-800 pb-1.5 font-sans">
-                  Tableau des Coordonnées
-                </span>
-                <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin">
-                  <div className="flex flex-row gap-[4mm] items-start justify-start h-full pb-1">
-                    {parcelsColumnInfo.map((pInfo, pIdx) => {
-                      const columnsArray: typeof parcel.vertices[] = [];
-                      for (let i = 0; i < pInfo.totalPoints; i += pInfo.rowsPerColumn) {
-                        columnsArray.push(pInfo.vertices.slice(i, i + pInfo.rowsPerColumn));
-                      }
-                      
-                      return (
-                        <div key={`p-table-${pInfo.parcelId}`} className="flex flex-row gap-[3mm] h-full items-start">
-                          {pIdx > 0 && <div className="w-[1px] bg-stone-300 h-full self-stretch" />}
-                          <div className="flex flex-col gap-1 h-full">
-                            <span className="text-[8px] font-bold text-stone-700 truncate max-w-[70mm] block">
-                              {pInfo.parcelName}
-                            </span>
-                            <div className="flex flex-row gap-[3mm] h-full items-start">
-                              {columnsArray.map((colVertices, colIdx) => (
-                                <div 
-                                  key={colIdx} 
-                                  className="w-[36mm] min-w-[36mm] border border-stone-300 rounded bg-white overflow-hidden shadow-sm flex flex-col"
-                                  style={{ maxHeight: "100%" }}
-                                >
-                                  <table className="w-full text-left font-mono border-collapse">
-                                    <thead className="bg-stone-200 text-stone-900 border-b border-stone-400 text-[8px] font-extrabold sticky top-0">
-                                      <tr>
-                                        <th className="px-1.5 py-1 uppercase text-center border-r border-stone-300 w-[25%]">FID</th>
-                                        <th className="px-1.5 py-1 uppercase text-right border-r border-stone-300">X (m)</th>
-                                        <th className="px-1.5 py-1 uppercase text-right">Y (m)</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-stone-200 text-stone-950 text-[8.5px]">
-                                      {colVertices.map((v) => {
-                                        const origIdx = pInfo.vertices.findIndex((orig) => orig.id === v.id);
-                                        return (
-                                          <tr key={v.id} className="hover:bg-amber-50/25 odd:bg-stone-100/20">
-                                            <td className="px-1.5 py-0.5 font-bold text-center border-r border-stone-200">
-                                              {v.label || `P${origIdx + 1}`}
-                                            </td>
-                                            <td className="px-1.5 py-0.5 text-right font-medium border-r border-stone-200 bg-stone-50/10">
-                                              {v.x.toFixed(2)}
-                                            </td>
-                                            <td className="px-1.5 py-0.5 text-right font-medium">
-                                              {v.y.toFixed(2)}
-                                            </td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              ))}
+                {/* 1. COORDINATES TABLE SECTION */}
+                <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                  <span className="text-[10px] font-black text-stone-900 uppercase tracking-widest mb-1.5 block text-center border-b border-stone-800 pb-1 font-sans">
+                    Tableau des Coordonnées (إحداثيات النقط)
+                  </span>
+                  <div className="flex-1 overflow-x-auto overflow-y-auto scrollbar-thin">
+                    <div className="flex flex-row gap-[4mm] items-start justify-start pb-1 h-full">
+                      {parcelsColumnInfo.map((pInfo, pIdx) => {
+                        const columnsArray: typeof parcel.vertices[] = [];
+                        for (let i = 0; i < pInfo.totalPoints; i += pInfo.rowsPerColumn) {
+                          columnsArray.push(pInfo.vertices.slice(i, i + pInfo.rowsPerColumn));
+                        }
+                        
+                        return (
+                          <div key={`p-table-${pInfo.parcelId}`} className="flex flex-row gap-[3mm] items-start h-full">
+                            {pIdx > 0 && <div className="w-[1px] bg-stone-300 self-stretch" />}
+                            <div className="flex flex-col gap-1 h-full">
+                              <span className="text-[7.5px] font-bold text-stone-700 truncate max-w-[70mm] block">
+                                {pInfo.parcelName}
+                              </span>
+                              <div className="flex flex-row gap-[3mm] items-start h-full">
+                                {columnsArray.map((colVertices, colIdx) => (
+                                  <div 
+                                    key={colIdx} 
+                                    className="w-[36mm] min-w-[36mm] border border-stone-300 rounded bg-white overflow-hidden shadow-sm flex flex-col"
+                                    style={{ maxHeight: "100%", overflowY: "auto" }}
+                                  >
+                                    <table className="w-full text-left font-mono border-collapse">
+                                      <thead className="bg-stone-200 text-stone-900 border-b border-stone-400 text-[7px] font-extrabold sticky top-0">
+                                        <tr>
+                                          <th className="px-1 py-0.5 uppercase text-center border-r border-stone-300 w-[25%]">FID</th>
+                                          <th className="px-1 py-0.5 uppercase text-right border-r border-stone-300">X (m)</th>
+                                          <th className="px-1 py-0.5 uppercase text-right">Y (m)</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-stone-200 text-stone-950 text-[7.5px]">
+                                        {colVertices.map((v) => {
+                                          const origIdx = pInfo.vertices.findIndex((orig) => orig.id === v.id);
+                                          return (
+                                            <tr key={v.id} className="hover:bg-amber-50/25 odd:bg-stone-100/20">
+                                              <td className="px-1 py-0.5 font-bold text-center border-r border-stone-200">
+                                                {v.label || `P${origIdx + 1}`}
+                                              </td>
+                                              <td className="px-1 py-0.5 text-right font-medium border-r border-stone-200 bg-stone-50/10">
+                                                {v.x.toFixed(2)}
+                                              </td>
+                                              <td className="px-1 py-0.5 text-right font-medium">
+                                                {v.y.toFixed(2)}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
+
+
               </div>
 
               {/* Automated Label Generation Stamp on bottom-right of page 2 technical sheet */}
@@ -1742,270 +1756,12 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                         });
                       })()}
 
-                      {/* Segment Labels */}
-                      {ap.segments.map((seg) => {
-                        const labelOffset = settings.labelOffset !== undefined ? settings.labelOffset : 7;
-                        const apCentroid = calculateCentroid(ap.vertices);
-                        const insidePrPoint = getOutsidePoint(apCentroid, seg.startVertex, seg.endVertex, labelOffset);
-                        const pt = projectToSvg(insidePrPoint.x, insidePrPoint.y);
 
-                        if (pt.x < mapLeft + 10 || pt.x > mapRight - 10 || pt.y < mapTop + 10 || pt.y > mapBottom - 10) {
-                          return null;
-                        }
-
-                        const angle = getSegmentAngle(seg.startVertex, seg.endVertex);
-                        const showL = settings.mapLabels === "Longueurs" || settings.mapLabels === "Longueurs + Voisins";
-                        const showN = settings.mapLabels === "Voisins" || settings.mapLabels === "Longueurs + Voisins";
-
-                        const neighborLines = showN && seg.neighbor ? splitNeighborText(seg.neighbor) : [];
-                        const baseLabelSize = (settings.labelFontSize !== undefined ? settings.labelFontSize : 7.0) * 0.85;
-                        const neighborFontSize = `${baseLabelSize * 0.9}px`;
-                        const lengthFontSize = `${baseLabelSize}px`;
-
-                        return (
-                          <g key={`ap-seg-${seg.id}`}>
-                            <g transform={`translate(${pt.x}, ${pt.y}) rotate(${-angle})`}>
-                              {showL && (
-                                <g>
-                                  <text
-                                    x="0"
-                                    y="-3"
-                                    textAnchor="middle"
-                                    stroke="#ffffff"
-                                    strokeWidth="2.5"
-                                    strokeLinejoin="round"
-                                    style={{ fontSize: lengthFontSize }}
-                                    className="font-sans font-black select-none"
-                                  >
-                                    {seg.length.toFixed(2)} m
-                                  </text>
-                                  <text
-                                    x="0"
-                                    y="-3"
-                                    textAnchor="middle"
-                                    style={{ fontSize: lengthFontSize }}
-                                    className="font-sans font-black fill-purple-800 select-none"
-                                  >
-                                    {seg.length.toFixed(2)} m
-                                  </text>
-                                </g>
-                              )}
-
-                              {showN && neighborLines.length > 0 && (
-                                <g>
-                                  {neighborLines.length === 1 ? (
-                                    <g>
-                                      <text
-                                        x="0"
-                                        y="4"
-                                        textAnchor="middle"
-                                        stroke="#ffffff"
-                                        strokeWidth="2.5"
-                                        strokeLinejoin="round"
-                                        style={{ fontSize: neighborFontSize }}
-                                        className="font-sans font-bold select-none"
-                                      >
-                                        {neighborLines[0]}
-                                      </text>
-                                      <text
-                                        x="0"
-                                        y="4"
-                                        textAnchor="middle"
-                                        style={{ fontSize: neighborFontSize }}
-                                        className="font-sans font-semibold fill-stone-600 select-none"
-                                      >
-                                        {neighborLines[0]}
-                                      </text>
-                                    </g>
-                                  ) : (
-                                    <g>
-                                      <text
-                                        x="0"
-                                        y="3.5"
-                                        textAnchor="middle"
-                                        stroke="#ffffff"
-                                        strokeWidth="2.5"
-                                        strokeLinejoin="round"
-                                        style={{ fontSize: `${baseLabelSize * 0.8}px` }}
-                                        className="font-sans font-bold select-none"
-                                      >
-                                        {neighborLines[0]}
-                                      </text>
-                                      <text
-                                        x="0"
-                                        y="3.5"
-                                        textAnchor="middle"
-                                        style={{ fontSize: `${baseLabelSize * 0.8}px` }}
-                                        className="font-sans font-semibold fill-stone-600 select-none"
-                                      >
-                                        {neighborLines[0]}
-                                      </text>
-
-                                      <text
-                                        x="0"
-                                        y="9.5"
-                                        textAnchor="middle"
-                                        stroke="#ffffff"
-                                        strokeWidth="2.5"
-                                        strokeLinejoin="round"
-                                        style={{ fontSize: `${baseLabelSize * 0.8}px` }}
-                                        className="font-sans font-bold select-none"
-                                      >
-                                        {neighborLines[1]}
-                                      </text>
-                                      <text
-                                        x="0"
-                                        y="9.5"
-                                        textAnchor="middle"
-                                        style={{ fontSize: `${baseLabelSize * 0.8}px` }}
-                                        className="font-sans font-semibold fill-stone-600 select-none"
-                                      >
-                                        {neighborLines[1]}
-                                      </text>
-                                    </g>
-                                  )}
-                                </g>
-                              )}
-                            </g>
-                          </g>
-                        );
-                      })}
                     </g>
                   );
                 })}
 
-                {/* Labels of segments */}
-                {parcel.segments.map((seg) => {
-                  const labelOffset = settings.labelOffset !== undefined ? settings.labelOffset : 7;
-                  const insidePrPoint = getOutsidePoint(centroid, seg.startVertex, seg.endVertex, labelOffset);
-                  const pt = projectToSvg(insidePrPoint.x, insidePrPoint.y);
 
-                  if (pt.x < mapLeft + 10 || pt.x > mapRight - 10 || pt.y < mapTop + 10 || pt.y > mapBottom - 10) {
-                    return null;
-                  }
-
-                  const angle = getSegmentAngle(seg.startVertex, seg.endVertex);
-                  const showL = settings.mapLabels === "Longueurs" || settings.mapLabels === "Longueurs + Voisins";
-                  const showN = settings.mapLabels === "Voisins" || settings.mapLabels === "Longueurs + Voisins";
-
-                  const neighborLines = showN && seg.neighbor ? splitNeighborText(seg.neighbor) : [];
-                  const baseLabelSize = settings.labelFontSize !== undefined ? settings.labelFontSize : 7.0;
-                  const neighborFontSize = `${baseLabelSize * 0.9}px`;
-                  const lengthFontSize = `${baseLabelSize}px`;
-
-                  return (
-                    <g key={seg.id}>
-                      <g transform={`translate(${pt.x}, ${pt.y}) rotate(${-angle})`}>
-                        {showL && (
-                          <g>
-                            {/* White thick halo background text */}
-                            <text
-                              x="0"
-                              y="-4"
-                              textAnchor="middle"
-                              stroke="#ffffff"
-                              strokeWidth="3"
-                              strokeLinejoin="round"
-                              style={{ fontSize: lengthFontSize }}
-                              className="font-sans font-black select-none"
-                            >
-                              {seg.length.toFixed(2)} m
-                            </text>
-                            <text
-                              x="0"
-                              y="-4"
-                              textAnchor="middle"
-                              style={{ fontSize: lengthFontSize }}
-                              className="font-sans font-black fill-blue-800 select-none"
-                            >
-                              {seg.length.toFixed(2)} m
-                            </text>
-                          </g>
-                        )}
-
-                        {showN && neighborLines.length > 0 && (
-                          <g>
-                            {neighborLines.length === 1 ? (
-                              <g>
-                                {/* White outline halo */}
-                                <text
-                                  x="0"
-                                  y="5"
-                                  textAnchor="middle"
-                                  stroke="#ffffff"
-                                  strokeWidth="3.2"
-                                  strokeLinejoin="round"
-                                  style={{ fontSize: neighborFontSize }}
-                                  className="font-sans font-bold select-none"
-                                >
-                                  {neighborLines[0]}
-                                </text>
-                                {/* Fill text */}
-                                <text
-                                  x="0"
-                                  y="5"
-                                  textAnchor="middle"
-                                  style={{ fontSize: neighborFontSize }}
-                                  className="font-sans font-black fill-stone-850 select-none"
-                                >
-                                  {neighborLines[0]}
-                                </text>
-                              </g>
-                            ) : (
-                              <g>
-                                {/* Line 1 Halo & Fill */}
-                                <text
-                                  x="0"
-                                  y="4.5"
-                                  textAnchor="middle"
-                                  stroke="#ffffff"
-                                  strokeWidth="3.2"
-                                  strokeLinejoin="round"
-                                  style={{ fontSize: `${baseLabelSize * 0.8}px`, lineHeight: "1" }}
-                                  className="font-sans font-bold select-none"
-                                >
-                                  {neighborLines[0]}
-                                </text>
-                                <text
-                                  x="0"
-                                  y="4.5"
-                                  textAnchor="middle"
-                                  style={{ fontSize: `${baseLabelSize * 0.8}px`, lineHeight: "1" }}
-                                  className="font-sans font-black fill-stone-850 select-none"
-                                >
-                                  {neighborLines[0]}
-                                </text>
-
-                                {/* Line 2 Halo & Fill */}
-                                <text
-                                  x="0"
-                                  y="11"
-                                  textAnchor="middle"
-                                  stroke="#ffffff"
-                                  strokeWidth="3.2"
-                                  strokeLinejoin="round"
-                                  style={{ fontSize: `${baseLabelSize * 0.8}px`, lineHeight: "1" }}
-                                  className="font-sans font-bold select-none"
-                                >
-                                  {neighborLines[1]}
-                                </text>
-                                <text
-                                  x="0"
-                                  y="11"
-                                  textAnchor="middle"
-                                  style={{ fontSize: `${baseLabelSize * 0.8}px`, lineHeight: "1" }}
-                                  className="font-sans font-black fill-stone-850 select-none"
-                                >
-                                  {neighborLines[1]}
-                                </text>
-                              </g>
-                            )}
-                          </g>
-                        )}
-                      </g>
-                    </g>
-                  );
-                })}
 
                 {/* Corner polygon Vertex labels with active-balancing outward projection */}
                 {(() => {
@@ -2055,6 +1811,520 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                     );
                   });
                 })()}
+
+                {/* 5.5 Render Custom Interior Label inside the SVG map frame */}
+                {parcel.interiorLabel && (
+                  <g id="print-interior-text-label">
+                    <text
+                      x={projectToSvg(centroid.x, centroid.y).x}
+                      y={projectToSvg(centroid.x, centroid.y).y + 3}
+                      textAnchor="middle"
+                      stroke="#ffffff"
+                      strokeWidth="3.5"
+                      strokeLinejoin="round"
+                      style={{ fontSize: `${(settings.labelFontSize || 7.0) * 1.5}px`, fontWeight: 900 }}
+                      className="font-sans select-none pointer-events-none"
+                    >
+                      {parcel.interiorLabel}
+                    </text>
+                    <text
+                      x={projectToSvg(centroid.x, centroid.y).x}
+                      y={projectToSvg(centroid.x, centroid.y).y + 3}
+                      textAnchor="middle"
+                      style={{ fontSize: `${(settings.labelFontSize || 7.0) * 1.5}px`, fontWeight: 900 }}
+                      className="font-sans fill-stone-950 select-none pointer-events-none"
+                    >
+                      {parcel.interiorLabel}
+                    </text>
+                  </g>
+                )}
+
+                {/* 5.6 Render Custom Cartographic Symbols inside the SVG map frame */}
+                {(parcel.symbols || []).map((sym) => {
+                  const pt = projectToSvg(sym.x, sym.y);
+                  if (pt.x < mapLeft || pt.x > mapRight || pt.y < mapTop || pt.y > mapBottom) return null;
+
+                  const customColor = sym.color || (
+                    sym.type === "tree" ? "#16a34a" :
+                    sym.type === "cemetery" ? "#1c1917" :
+                    sym.type === "well" ? "#2563eb" :
+                    sym.type === "building" ? "#dc2626" :
+                    sym.type === "mosque" ? "#d97706" :
+                    sym.type === "palm" ? "#059669" :
+                    sym.type === "reed" ? "#854d0e" :
+                    sym.type === "grass" ? "#16a34a" :
+                    sym.type === "transformer" ? "#ea580c" :
+                    sym.type === "olive" ? "#65a30d" :
+                    sym.type === "geodetic" ? "#dc2626" :
+                    sym.type === "spring" ? "#0284c7" :
+                    "#1c1917"
+                  );
+                  const customSize = sym.size || 24;
+                  const customFontSize = sym.fontSize || 12;
+
+                  if (sym.type === "custom_text") {
+                    return (
+                      <g key={sym.id}>
+                        <text
+                          x={pt.x}
+                          y={pt.y + (customFontSize * 0.3)}
+                          textAnchor="middle"
+                          stroke="#ffffff"
+                          strokeWidth="3.5"
+                          style={{ fontSize: `${customFontSize}px`, fontWeight: "black" }}
+                          className="font-sans"
+                        >
+                          {sym.label || "Text"}
+                        </text>
+                        <text
+                          x={pt.x}
+                          y={pt.y + (customFontSize * 0.3)}
+                          textAnchor="middle"
+                          fill={customColor}
+                          style={{ fontSize: `${customFontSize}px`, fontWeight: "black" }}
+                          className="font-sans"
+                        >
+                          {sym.label || "Text"}
+                        </text>
+                      </g>
+                    );
+                  }
+
+                  const renderIconContent = () => {
+                    switch (sym.type) {
+                      case "tree":
+                        return (
+                          <svg viewBox="0 0 24 24" width={customSize} height={customSize} stroke={customColor} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                            <path d="M12 22V13" strokeWidth="2.5" />
+                            <path d="M12 13a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" fill={customColor} fillOpacity="0.25" />
+                            <circle cx="10" cy="8" r="3.5" stroke={customColor} fill={customColor} fillOpacity="0.15" />
+                            <circle cx="14" cy="8" r="3.5" stroke={customColor} fill={customColor} fillOpacity="0.15" />
+                          </svg>
+                        );
+                      case "cemetery":
+                        return (
+                          <svg viewBox="0 0 24 24" width={customSize} height={customSize} stroke={customColor} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                            <path d="M12 5c-2.8 0-5 2.2-5 5s2.2 5 5 5c1.5 0 2.8-.7 3.6-1.7c-2.1 0-4-1.8-4-4.1s1.9-4.1 4-4.1C14.8 5.7 13.5 5 12 5Z" fill={customColor} stroke="none" />
+                            <path d="M5 18c0-1.4 .8-2.2 1.8-2.2s1.8 .8 1.8 2.2" />
+                            <line x1="4.2" y1="18" x2="9.4" y2="18" />
+                            <path d="M15.4 18c0-1.4 .8-2.2 1.8-2.2s1.8 .8 1.8 2.2" />
+                            <line x1="14.6" y1="18" x2="19.8" y2="18" />
+                          </svg>
+                        );
+                      case "well":
+                        return (
+                          <svg viewBox="0 0 24 24" width={customSize} height={customSize} stroke={customColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                            <circle cx="12" cy="12" r="9" fill={customColor} fillOpacity="0.15" />
+                            <circle cx="12" cy="12" r="4" fill={customColor} />
+                          </svg>
+                        );
+                      case "building":
+                        return (
+                          <svg viewBox="0 0 24 24" width={customSize} height={customSize} stroke={customColor} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                            <path d="M3 21h18" />
+                            <rect x="5" y="9" width="14" height="12" fill={customColor} fillOpacity="0.15" />
+                            <polyline points="3,9 12,3 21,9" />
+                            <rect x="10" y="15" width="4" height="6" />
+                          </svg>
+                        );
+                      case "mosque":
+                        return (
+                          <svg viewBox="0 0 24 24" width={customSize} height={customSize} stroke={customColor} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                            <path d="M3 21h18" />
+                            <path d="M6 21v-4a6 6 0 0 1 12 0v4" fill={customColor} fillOpacity="0.15" />
+                            <path d="M12 11V6" stroke-width="2" />
+                            <path d="M12 5a1.5 1.5 0 1 1-1.2 1.8" stroke-width="1.5" />
+                            <path d="M10 21v-3a2 2 0 0 1 4 0v3" />
+                          </svg>
+                        );
+                      case "palm":
+                        return (
+                          <svg viewBox="0 0 24 24" width={customSize} height={customSize} stroke={customColor} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                            <path d="M12 22V12" stroke-width="2.5" />
+                            <path d="M12 12c-2-2-5-1-6 1" />
+                            <path d="M12 12c2-2 5-1 6 1" />
+                            <path d="M12 12c-1-3-4-4-6-3" />
+                            <path d="M12 12c1-3 4-4 6-3" />
+                            <path d="M12 12c0-4-2-5-3-5" />
+                            <path d="M12 12c0-4 2-5 3-5" />
+                          </svg>
+                        );
+                      case "reed":
+                        return (
+                          <svg viewBox="0 0 24 24" width={customSize} height={customSize} stroke={customColor} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                            <path d="M12 22V5" stroke-width="2" />
+                            <path d="M8 22C8 16 6 12 4 10" />
+                            <path d="M16 22C16 16 18 12 20 10" />
+                            <rect x="11" y="2" width="2" height="6" rx="1" fill={customColor} />
+                            <circle cx="4" cy="9" r="1" fill={customColor} />
+                            <circle cx="20" cy="9" r="1" fill={customColor} />
+                          </svg>
+                        );
+                      case "grass":
+                        return (
+                          <svg viewBox="0 0 24 24" width={customSize} height={customSize} stroke={customColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                            <path d="M12 22C12 14 8 10 5 9" />
+                            <path d="M12 22C12 11 16 7 20 6" />
+                            <path d="M12 22C12 15 10 9 7 7" strokeWidth="1.8" />
+                            <path d="M12 22C12 15 14 9 17 7" stroke-width="1.8" />
+                          </svg>
+                        );
+                      case "transformer":
+                        return (
+                          <svg viewBox="0 0 24 24" width={customSize} height={customSize} stroke={customColor} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                            <rect x="5" y="7" width="14" height="13" rx="1.5" fill={customColor} fillOpacity="0.15" />
+                            <path d="M12 3v4" stroke-width="2" />
+                            <path d="M8 3h8" />
+                            <path d="M13 10l-3 3.5h4l-2 3.5" stroke-width="1.8" />
+                          </svg>
+                        );
+                      case "olive":
+                        return (
+                          <svg viewBox="0 0 24 24" width={customSize} height={customSize} stroke={customColor} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                            <path d="M12 22c0-3 0.5-4.5 1.5-5.5" strokeWidth="2.2" />
+                            <path d="M12 22c0-3-0.5-4.5-1.5-5.5" strokeWidth="2.2" />
+                            <path d="M12 22v-5.5" strokeWidth="2.6" />
+                            <path d="M10.5 16.5c-1.5-1.5-2-3-1.5-4.5" />
+                            <path d="M13.5 16.5c1.5-1.5 2-3 1.5-4.5" />
+                            <circle cx="12" cy="9" r="5" fill={customColor} fillOpacity="0.25" stroke={customColor} strokeWidth="1.2" />
+                            <circle cx="8" cy="11" r="4" fill={customColor} fillOpacity="0.25" stroke={customColor} strokeWidth="1.2" />
+                            <circle cx="16" cy="11" r="4" fill={customColor} fillOpacity="0.25" stroke={customColor} strokeWidth="1.2" />
+                            <circle cx="10" cy="9" r="1.1" fill="#1c1917" stroke="none" />
+                            <circle cx="14" cy="10" r="1.1" fill="#1c1917" stroke="none" />
+                            <circle cx="12" cy="12" r="1.1" fill="#1c1917" stroke="none" />
+                            <circle cx="8" cy="11" r="1.1" fill="#1c1917" stroke="none" />
+                            <circle cx="16" cy="11" r="1.1" fill="#1c1917" stroke="none" />
+                          </svg>
+                        );
+                      case "geodetic":
+                        return (
+                          <svg viewBox="0 0 24 24" width={customSize} height={customSize} stroke={customColor} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                            <polygon points="12,3 22,20 2,20" fill={customColor} fillOpacity="0.15" strokeWidth="2" />
+                            <circle cx="12" cy="14" r="2.5" fill={customColor} />
+                          </svg>
+                        );
+                      case "spring":
+                        return (
+                          <svg viewBox="0 0 24 24" width={customSize} height={customSize} stroke={customColor} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                            <path d="M12 3v3M12 21a6 6 0 0 0 6-6c0-4-6-10-6-10S6 11 6 15a6 6 0 0 0 6 6z" fill={customColor} fillOpacity="0.20" />
+                            <path d="M9 15c0-1.5 1.5-3 3-3" />
+                          </svg>
+                        );
+                      default:
+                        return null;
+                    }
+                  };
+
+                  return (
+                    <g key={sym.id}>
+                      <g transform={`translate(${pt.x - customSize / 2}, ${pt.y - customSize / 2})`}>
+                        {renderIconContent()}
+                      </g>
+                      
+                      {sym.label && (
+                        <g>
+                          <text
+                            x={pt.x}
+                            y={pt.y + (customSize / 2) + 12}
+                            textAnchor="middle"
+                            stroke="#ffffff"
+                            strokeWidth="2.5"
+                            style={{ fontSize: `${Math.max(6, customFontSize - 4)}px`, fontWeight: "bold" }}
+                            className="font-sans"
+                          >
+                            {sym.label}
+                          </text>
+                          <text
+                            x={pt.x}
+                            y={pt.y + (customSize / 2) + 12}
+                            textAnchor="middle"
+                            fill={customColor}
+                            style={{ fontSize: `${Math.max(6, customFontSize - 4)}px`, fontWeight: "bold" }}
+                            className="font-sans"
+                          >
+                            {sym.label}
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
+
+                {/* 5.7 Render Custom Linear Features (Paths, Pipes, Lines) inside the SVG map frame */}
+                {(parcel.linearFeatures || []).map((lf) => {
+                  const pointsList = lf.vertices.map((v) => projectToSvg(v.x, v.y));
+                  if (pointsList.length < 2) return null;
+
+                  const pathD = pointsList.map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+
+                  const color = lf.color || (
+                    lf.type === "footpath" ? "#b45309" :
+                    lf.type === "agri_road" ? "#78350f" :
+                    lf.type === "power_line" ? "#475569" :
+                    lf.type === "water_pipe" ? "#0284c7" :
+                    lf.type === "sewer_pipe" ? "#7c2d12" :
+                    "#1c1917"
+                  );
+                  const thickness = lf.thickness || 2.2;
+                  const lblColor = lf.labelColor || lf.color || color;
+                  const lblSize = lf.labelSize || 8;
+
+                  if (lf.type === "footpath") {
+                    return (
+                      <g key={lf.id}>
+                        <path
+                          d={pathD}
+                          fill="none"
+                          stroke={color}
+                          strokeWidth={thickness}
+                          strokeDasharray="4,4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        {lf.label && (
+                          <g>
+                            <text
+                              x={pointsList[Math.floor(pointsList.length / 2)].x}
+                              y={pointsList[Math.floor(pointsList.length / 2)].y - 6}
+                              textAnchor="middle"
+                              stroke="#ffffff"
+                              strokeWidth="3"
+                              style={{ fontSize: `${lblSize}px`, fontWeight: "900" }}
+                              className="font-sans"
+                            >
+                              {lf.label}
+                            </text>
+                            <text
+                              x={pointsList[Math.floor(pointsList.length / 2)].x}
+                              y={pointsList[Math.floor(pointsList.length / 2)].y - 6}
+                              textAnchor="middle"
+                              fill={lblColor}
+                              style={{ fontSize: `${lblSize}px`, fontWeight: "900" }}
+                              className="font-sans"
+                            >
+                              {lf.label}
+                            </text>
+                          </g>
+                        )}
+                      </g>
+                    );
+                  }
+
+                  if (lf.type === "agri_road") {
+                    const spacingVal = lf.spacing !== undefined ? lf.spacing : 4;
+                    const { left, right } = getParallelPolylines(lf.vertices, spacingVal / 2);
+
+                    const leftSvgPoints = left.map((v) => projectToSvg(v.x, v.y));
+                    const rightSvgPoints = right.map((v) => projectToSvg(v.x, v.y));
+
+                    const leftPathD = leftSvgPoints.map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+                    const rightPathD = rightSvgPoints.map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+
+                    return (
+                      <g key={lf.id}>
+                        {/* Two separate parallel lines without solid middle filling */}
+                        <path
+                          d={leftPathD}
+                          fill="none"
+                          stroke={color}
+                          strokeWidth={thickness}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d={rightPathD}
+                          fill="none"
+                          stroke={color}
+                          strokeWidth={thickness}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        {lf.label && (
+                          <g>
+                            <text
+                              x={pointsList[Math.floor(pointsList.length / 2)].x}
+                              y={pointsList[Math.floor(pointsList.length / 2)].y - 6}
+                              textAnchor="middle"
+                              stroke="#ffffff"
+                              strokeWidth="3"
+                              style={{ fontSize: `${lblSize}px`, fontWeight: "900" }}
+                              className="font-sans"
+                            >
+                              {lf.label}
+                            </text>
+                            <text
+                              x={pointsList[Math.floor(pointsList.length / 2)].x}
+                              y={pointsList[Math.floor(pointsList.length / 2)].y - 6}
+                              textAnchor="middle"
+                              fill={lblColor}
+                              style={{ fontSize: `${lblSize}px`, fontWeight: "900" }}
+                              className="font-sans"
+                            >
+                              {lf.label}
+                            </text>
+                          </g>
+                        )}
+                      </g>
+                    );
+                  }
+
+                  if (lf.type === "power_line") {
+                    return (
+                      <g key={lf.id}>
+                        <path
+                          d={pathD}
+                          fill="none"
+                          stroke={color}
+                          strokeWidth={thickness}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        {/* Professional electrical poles / pylons on vertices */}
+                        {pointsList.map((p, pIdx) => (
+                          <g key={pIdx} transform={`translate(${p.x}, ${p.y})`}>
+                            {/* Vertical mast */}
+                            <line x1="0" y1="-8" x2="0" y2="8" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+                            {/* Upper crossbar */}
+                            <line x1="-6" y1="-5" x2="6" y2="-5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+                            {/* Lower crossbar */}
+                            <line x1="-4" y1="-1" x2="4" y2="-1" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
+                            {/* Insulators */}
+                            <circle cx="-6" cy="-5" r="0.6" fill="#ffffff" stroke={color} strokeWidth="0.4" />
+                            <circle cx="6" cy="-5" r="0.6" fill="#ffffff" stroke={color} strokeWidth="0.4" />
+                            <circle cx="-4" cy="-1" r="0.5" fill="#ffffff" stroke={color} strokeWidth="0.3" />
+                            <circle cx="4" cy="-1" r="0.5" fill="#ffffff" stroke={color} strokeWidth="0.3" />
+                          </g>
+                        ))}
+                        {lf.label && (
+                          <g>
+                            <text
+                              x={pointsList[Math.floor(pointsList.length / 2)].x}
+                              y={pointsList[Math.floor(pointsList.length / 2)].y - 6}
+                              textAnchor="middle"
+                              stroke="#ffffff"
+                              strokeWidth="3"
+                              style={{ fontSize: `${lblSize}px`, fontWeight: "900" }}
+                              className="font-sans"
+                            >
+                              {lf.label}
+                            </text>
+                            <text
+                              x={pointsList[Math.floor(pointsList.length / 2)].x}
+                              y={pointsList[Math.floor(pointsList.length / 2)].y - 6}
+                              textAnchor="middle"
+                              fill={lblColor}
+                              style={{ fontSize: `${lblSize}px`, fontWeight: "900" }}
+                              className="font-sans"
+                            >
+                              {lf.label}
+                            </text>
+                          </g>
+                        )}
+                      </g>
+                    );
+                  }
+
+                  if (lf.type === "water_pipe") {
+                    return (
+                      <g key={lf.id}>
+                        <path
+                          d={pathD}
+                          fill="none"
+                          stroke={color}
+                          strokeWidth={thickness}
+                          strokeDasharray="10,3,2,3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        {pointsList.map((p, pIdx) => (
+                          <circle
+                            key={pIdx}
+                            cx={p.x}
+                            cy={p.y}
+                            r={2}
+                            fill={color}
+                          />
+                        ))}
+                        {lf.label && (
+                          <g>
+                            <text
+                              x={pointsList[Math.floor(pointsList.length / 2)].x}
+                              y={pointsList[Math.floor(pointsList.length / 2)].y - 6}
+                              textAnchor="middle"
+                              stroke="#ffffff"
+                              strokeWidth="3"
+                              style={{ fontSize: `${lblSize}px`, fontWeight: "900" }}
+                              className="font-sans"
+                            >
+                              {lf.label}
+                            </text>
+                            <text
+                              x={pointsList[Math.floor(pointsList.length / 2)].x}
+                              y={pointsList[Math.floor(pointsList.length / 2)].y - 6}
+                              textAnchor="middle"
+                              fill={lblColor}
+                              style={{ fontSize: `${lblSize}px`, fontWeight: "900" }}
+                              className="font-sans"
+                            >
+                              {lf.label}
+                            </text>
+                          </g>
+                        )}
+                      </g>
+                    );
+                  }
+
+                  if (lf.type === "sewer_pipe") {
+                    return (
+                      <g key={lf.id}>
+                        <path
+                          d={pathD}
+                          fill="none"
+                          stroke={color}
+                          strokeWidth={thickness}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        {pointsList.map((p, pIdx) => (
+                          <circle
+                            key={pIdx}
+                            cx={p.x}
+                            cy={p.y}
+                            r={3}
+                            fill={color}
+                          />
+                        ))}
+                        {lf.label && (
+                          <g>
+                            <text
+                              x={pointsList[Math.floor(pointsList.length / 2)].x}
+                              y={pointsList[Math.floor(pointsList.length / 2)].y - 6}
+                              textAnchor="middle"
+                              stroke="#ffffff"
+                              strokeWidth="3"
+                              style={{ fontSize: `${lblSize}px`, fontWeight: "900" }}
+                              className="font-sans"
+                            >
+                              {lf.label}
+                            </text>
+                            <text
+                              x={pointsList[Math.floor(pointsList.length / 2)].x}
+                              y={pointsList[Math.floor(pointsList.length / 2)].y - 6}
+                              textAnchor="middle"
+                              fill={lblColor}
+                              style={{ fontSize: `${lblSize}px`, fontWeight: "900" }}
+                              className="font-sans"
+                            >
+                              {lf.label}
+                            </text>
+                          </g>
+                        )}
+                      </g>
+                    );
+                  }
+
+                  return null;
+                })}
 
                 {/* Cartographic North Arrow Directly inside grid viewBox */}
                 <g transform={`translate(${mapRight - 46}, ${mapTop + 10})`}>
@@ -2114,6 +2384,411 @@ export const PrintSheetLayout: React.FC<PrintSheetLayoutProps> = ({
                     </text>
                   </g>
                 </g>
+
+                {/* DRAW THE DYNAMIC LEGEND */}
+                {(() => {
+                  const legendEnabled = settings.legendEnabled !== false;
+                  if (!legendEnabled) return null;
+
+                  const legendItems: {
+                    label: string;
+                    draw: (x: number, y: number) => React.ReactNode;
+                  }[] = [];
+
+                  // 1. Boundary Line
+                  if (settings.legendShowBoundary !== false) {
+                    const bAr = settings.legendBoundaryLabelAr || "حدود القطعة";
+                    const bFr = settings.legendBoundaryLabelFr || "Limite de parcelle";
+                    legendItems.push({
+                      label: `${bFr} / ${bAr}`,
+                      draw: (x, y) => (
+                        <line x1={x + 10} y1={y + 11} x2={x + 35} y2={y + 11} stroke="#dc2626" strokeWidth="3" strokeLinecap="round" />
+                      )
+                    });
+                  }
+
+                  // 2. Linear Features
+                  if (settings.legendShowLines !== false && parcel.linearFeatures && parcel.linearFeatures.length > 0) {
+                    const uniqueLineTypes = Array.from(new Set(parcel.linearFeatures.map(lf => lf.type)));
+                    uniqueLineTypes.forEach((type: any) => {
+                      if (settings.legendItemVisibility?.[type] !== false) {
+                        const defaultFr = 
+                          type === "footpath" ? "Sentier" :
+                          type === "agri_road" ? "Chemin agricole" :
+                          type === "power_line" ? "Ligne électrique" :
+                          type === "water_pipe" ? "Conduite d'eau" : "Réseau d'assainissement";
+                        const defaultAr = 
+                          type === "footpath" ? "طريق رجلية" :
+                          type === "agri_road" ? "طريق فلاحية" :
+                          type === "power_line" ? "خط تيار كهربائي" :
+                          type === "water_pipe" ? "أنبوب ماء صالح للشرب" : "أنبوب تطهير السائل";
+
+                        const label = settings.legendItemLabels?.[type] || `${defaultFr} / ${defaultAr}`;
+
+                        legendItems.push({
+                          label,
+                          draw: (x, y) => {
+                            if (type === "footpath") {
+                              return <line x1={x + 10} y1={y + 11} x2={x + 35} y2={y + 11} stroke="#78350f" strokeWidth="2.5" strokeDasharray="4,3" strokeLinecap="round" />;
+                            }
+                            if (type === "agri_road") {
+                              return (
+                                <g>
+                                  <line x1={x + 10} y1={y + 8} x2={x + 35} y2={y + 8} stroke="#78350f" strokeWidth="1.5" />
+                                  <line x1={x + 10} y1={y + 14} x2={x + 35} y2={y + 14} stroke="#78350f" strokeWidth="1.5" />
+                                </g>
+                              );
+                            }
+                            if (type === "power_line") {
+                              return (
+                                <g>
+                                  <line x1={x + 10} y1={y + 11} x2={x + 35} y2={y + 11} stroke="#475569" strokeWidth="1.5" />
+                                  <g transform={`translate(${x + 22.5}, ${y + 11}) scale(0.7)`}>
+                                    <line x1="0" y1="-8" x2="0" y2="8" stroke="#475569" strokeWidth="1.5" strokeLinecap="round" />
+                                    <line x1="-6" y1="-5" x2="6" y2="-5" stroke="#475569" strokeWidth="1.5" strokeLinecap="round" />
+                                    <line x1="-4" y1="-1" x2="4" y2="-1" stroke="#475569" strokeWidth="1.2" strokeLinecap="round" />
+                                  </g>
+                                </g>
+                              );
+                            }
+                            if (type === "water_pipe") {
+                              return (
+                                <g>
+                                  <line x1={x + 10} y1={y + 11} x2={x + 35} y2={y + 11} stroke="#0284c7" strokeWidth="1.5" strokeDasharray="8,2,2,2" strokeLinecap="round" />
+                                  <circle cx={x + 22.5} cy={y + 11} r={1.8} fill="#0284c7" />
+                                </g>
+                              );
+                            }
+                            // sewer_pipe
+                            return (
+                              <g>
+                                <line x1={x + 10} y1={y + 11} x2={x + 35} y2={y + 11} stroke="#ea580c" strokeWidth="1.5" strokeDasharray="8,2" strokeLinecap="round" />
+                                <circle cx={x + 22.5} cy={y + 11} r={2.2} fill="#ffffff" stroke="#ea580c" strokeWidth="0.8" />
+                              </g>
+                            );
+                          }
+                        });
+                      }
+                    });
+                  }
+
+                  // 3. Symbols
+                  if (settings.legendShowSymbols !== false && parcel.symbols && parcel.symbols.length > 0) {
+                    const uniqueSymbolTypes = Array.from(new Set(parcel.symbols.filter(s => s.type !== "custom_text").map(s => s.type)));
+                    uniqueSymbolTypes.forEach((type: any) => {
+                      if (settings.legendItemVisibility?.[type] !== false) {
+                        const defaultFr = 
+                          type === "tree" ? "Arbre" :
+                          type === "well" ? "Puits" :
+                          type === "building" ? "Bâtiment" :
+                          type === "mosque" ? "Mosquée" :
+                          type === "palm" ? "Palmier" :
+                          type === "reed" ? "Roseau" :
+                          type === "grass" ? "Herbe" :
+                          type === "transformer" ? "Transformateur" :
+                          type === "olive" ? "Olivier" :
+                          type === "geodetic" ? "Borne" :
+                          type === "spring" ? "Source" : "Symbole";
+                        const defaultAr = 
+                          type === "tree" ? "شجرة" :
+                          type === "well" ? "بئر" :
+                          type === "building" ? "بناية" :
+                          type === "mosque" ? "مسجد" :
+                          type === "palm" ? "نخلة" :
+                          type === "reed" ? "قصب" :
+                          type === "grass" ? "عشب" :
+                          type === "transformer" ? "محول كهربائي" :
+                          type === "olive" ? "زيتون" :
+                          type === "geodetic" ? "نقطة جيوديسية" :
+                          type === "spring" ? "عين ماء" : "رمز";
+
+                        const label = settings.legendItemLabels?.[type] || `${defaultFr} / ${defaultAr}`;
+
+                        legendItems.push({
+                          label,
+                          draw: (x, y) => {
+                            if (type === "tree") {
+                              return (
+                                <g transform={`translate(${x + 14}, ${y + 3})`}>
+                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="#16a34a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                                    <path d="M12 22V13" strokeWidth="2.5" />
+                                    <path d="M12 13a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" fill="#16a34a" fillOpacity="0.25" />
+                                    <circle cx="10" cy="8" r="3.5" stroke="#16a34a" fill="#16a34a" fillOpacity="0.15" />
+                                    <circle cx="14" cy="8" r="3.5" stroke="#16a34a" fill="#16a34a" fillOpacity="0.15" />
+                                  </svg>
+                                </g>
+                              );
+                            }
+                            if (type === "well") {
+                              return (
+                                <g transform={`translate(${x + 14}, ${y + 3})`}>
+                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                                    <circle cx="12" cy="12" r="9" fill="#2563eb" fillOpacity="0.15" />
+                                    <circle cx="12" cy="12" r="4" fill="#2563eb" />
+                                  </svg>
+                                </g>
+                              );
+                            }
+                            if (type === "building") {
+                              return (
+                                <g transform={`translate(${x + 14}, ${y + 3})`}>
+                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="#dc2626" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                                    <path d="M3 21h18" />
+                                    <rect x="5" y="9" width="14" height="12" fill="#dc2626" fillOpacity="0.15" />
+                                    <polyline points="3,9 12,3 21,9" />
+                                    <rect x="10" y="15" width="4" height="6" />
+                                  </svg>
+                                </g>
+                              );
+                            }
+                            if (type === "mosque") {
+                              return (
+                                <g transform={`translate(${x + 14}, ${y + 3})`}>
+                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="#d97706" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                                    <path d="M3 21h18" />
+                                    <path d="M6 21v-4a6 6 0 0 1 12 0v4" fill="#d97706" fillOpacity="0.15" />
+                                    <path d="M12 11V6" strokeWidth="2" />
+                                    <path d="M12 5a1.5 1.5 0 1 1-1.2 1.8" strokeWidth="1.5" />
+                                    <path d="M10 21v-3a2 2 0 0 1 4 0v3" />
+                                  </svg>
+                                </g>
+                              );
+                            }
+                            if (type === "palm") {
+                              return (
+                                <g transform={`translate(${x + 14}, ${y + 3})`}>
+                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="#059669" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                                    <path d="M12 22V12" strokeWidth="2.5" />
+                                    <path d="M12 12c-2-2-5-1-6 1" />
+                                    <path d="M12 12c2-2 5-1 6 1" />
+                                    <path d="M12 12c-1-3-4-4-6-3" />
+                                    <path d="M12 12c1-3 4-4 6-3" />
+                                    <path d="M12 12c0-4-2-5-3-5" />
+                                    <path d="M12 12c0-4 2-5 3-5" />
+                                  </svg>
+                                </g>
+                              );
+                            }
+                            if (type === "cemetery") {
+                              return (
+                                <g transform={`translate(${x + 14}, ${y + 3})`}>
+                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="#1c1917" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                                    <path d="M12 5c-2.8 0-5 2.2-5 5s2.2 5 5 5c1.5 0 2.8-.7 3.6-1.7c-2.1 0-4-1.8-4-4.1s1.9-4.1 4-4.1C14.8 5.7 13.5 5 12 5Z" fill="#1c1917" stroke="none" />
+                                    <path d="M5 18c0-1.4 .8-2.2 1.8-2.2s1.8 .8 1.8 2.2" />
+                                    <line x1="4.2" y1="18" x2="9.4" y2="18" />
+                                    <path d="M15.4 18c0-1.4 .8-2.2 1.8-2.2s1.8 .8 1.8 2.2" />
+                                    <line x1="14.6" y1="18" x2="19.8" y2="18" />
+                                  </svg>
+                                </g>
+                              );
+                            }
+                            if (type === "reed") {
+                              return (
+                                <g transform={`translate(${x + 14}, ${y + 3})`}>
+                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="#854d0e" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                                    <path d="M12 22V5" strokeWidth="2" />
+                                    <path d="M8 22C8 16 6 12 4 10" />
+                                    <path d="M16 22C16 16 18 12 20 10" />
+                                    <rect x="11" y="2" width="2" height="6" rx="1" fill="#854d0e" />
+                                    <circle cx="4" cy="9" r="1" fill="#854d0e" />
+                                    <circle cx="20" cy="9" r="1" fill="#854d0e" />
+                                  </svg>
+                                </g>
+                              );
+                            }
+                            if (type === "grass") {
+                              return (
+                                <g transform={`translate(${x + 14}, ${y + 3})`}>
+                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                                    <path d="M12 22C12 14 8 10 5 9" />
+                                    <path d="M12 22C12 11 16 7 20 6" />
+                                    <path d="M12 22C12 15 10 9 7 7" strokeWidth="1.8" />
+                                    <path d="M12 22C12 15 14 9 17 7" strokeWidth="1.8" />
+                                  </svg>
+                                </g>
+                              );
+                            }
+                            if (type === "transformer") {
+                              return (
+                                <g transform={`translate(${x + 14}, ${y + 3})`}>
+                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="#ea580c" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                                    <rect x="5" y="7" width="14" height="13" rx="1.5" fill="#ea580c" fillOpacity="0.15" />
+                                    <path d="M12 3v4" strokeWidth="2" />
+                                    <path d="M8 3h8" />
+                                    <path d="M13 10l-3 3.5h4l-2 3.5" strokeWidth="1.8" />
+                                  </svg>
+                                </g>
+                              );
+                            }
+                            if (type === "olive") {
+                              return (
+                                <g transform={`translate(${x + 14}, ${y + 3})`}>
+                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="#65a30d" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                                    <path d="M12 22c0-3 0.5-4.5 1.5-5.5" strokeWidth="2.2" />
+                                    <path d="M12 22c0-3-0.5-4.5-1.5-5.5" strokeWidth="2.2" />
+                                    <path d="M12 22v-5.5" strokeWidth="2.6" />
+                                    <path d="M10.5 16.5c-1.5-1.5-2-3-1.5-4.5" />
+                                    <path d="M13.5 16.5c1.5-1.5 2-3 1.5-4.5" />
+                                    <circle cx="12" cy="9" r="5" fill="#65a30d" fillOpacity="0.25" stroke="#65a30d" strokeWidth="1.2" />
+                                    <circle cx="8" cy="11" r="4" fill="#65a30d" fillOpacity="0.25" stroke="#65a30d" strokeWidth="1.2" />
+                                    <circle cx="16" cy="11" r="4" fill="#65a30d" fillOpacity="0.25" stroke="#65a30d" strokeWidth="1.2" />
+                                  </svg>
+                                </g>
+                              );
+                            }
+                            if (type === "geodetic") {
+                              return (
+                                <g transform={`translate(${x + 14}, ${y + 3})`}>
+                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="#dc2626" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                                    <polygon points="12,3 22,20 2,20" fill="#dc2626" fillOpacity="0.15" strokeWidth="2" />
+                                    <circle cx="12" cy="14" r="2.5" fill="#dc2626" />
+                                  </svg>
+                                </g>
+                              );
+                            }
+                            // spring
+                            return (
+                              <g transform={`translate(${x + 14}, ${y + 3})`}>
+                                <svg viewBox="0 0 24 24" width="16" height="16" stroke="#0284c7" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                                  <path d="M12 3v3M12 21a6 6 0 0 0 6-6c0-4-6-10-6-10S6 11 6 15a6 6 0 0 0 6 6z" fill="#0284c7" fillOpacity="0.20" />
+                                  <path d="M9 15c0-1.5 1.5-3 3-3" />
+                                </svg>
+                              </g>
+                            );
+                          }
+                        });
+                      }
+                    });
+                  }
+
+                  if (legendItems.length === 0) return null;
+
+                  const legendWidth = 210;
+                  const legendHeight = 35 + legendItems.length * 22 + 10;
+                  let legendX = mapLeft + 15;
+                  let legendY = mapBottom - legendHeight - 15;
+
+                  if (settings.legendPosition === "bottom-right") {
+                    legendX = mapRight - legendWidth - 15;
+                    legendY = mapBottom - legendHeight - 15;
+                  } else if (settings.legendPosition === "top-left") {
+                    legendX = mapLeft + 15;
+                    legendY = mapTop + 15;
+                  } else if (settings.legendPosition === "top-right") {
+                    legendX = mapRight - legendWidth - 15;
+                    legendY = mapTop + 15;
+                  }
+
+                  return (
+                    <g id="map-legend" transform={`translate(${legendX}, ${legendY})`}>
+                      {/* Shadow */}
+                      <rect
+                        x="2"
+                        y="2"
+                        width={legendWidth}
+                        height={legendHeight}
+                        rx="6"
+                        fill="#1c1917"
+                        fillOpacity="0.12"
+                      />
+                      {/* Container box */}
+                      <rect
+                        x="0"
+                        y="0"
+                        width={legendWidth}
+                        height={legendHeight}
+                        rx="6"
+                        fill="#ffffff"
+                        stroke="#1c1917"
+                        strokeWidth="1.5"
+                      />
+
+                      {/* Header Title Banner */}
+                      <g>
+                        <rect
+                          x="0"
+                          y="0"
+                          width={legendWidth}
+                          height="28"
+                          rx="6"
+                          fill="#fcfbf7"
+                          stroke="#1c1917"
+                          strokeWidth="1.5"
+                        />
+                        <rect
+                          x="0.75"
+                          y="20"
+                          width={legendWidth - 1.5}
+                          height="8"
+                          fill="#fcfbf7"
+                        />
+                        <line
+                          x1="0"
+                          y1="28"
+                          x2={legendWidth}
+                          y2="28"
+                          stroke="#1c1917"
+                          strokeWidth="1.5"
+                        />
+
+                        {/* French and Arabic Titles */}
+                        <text
+                          x="10"
+                          y="18"
+                          textAnchor="start"
+                          style={{ fontSize: "9px", fontWeight: "900", fontFamily: "sans-serif" }}
+                          className="fill-stone-900"
+                        >
+                          {settings.legendTitleFr || "LÉGENDE"}
+                        </text>
+                        <text
+                          x={legendWidth - 10}
+                          y="18"
+                          textAnchor="end"
+                          style={{ fontSize: "10px", fontWeight: "900", fontFamily: "sans-serif" }}
+                          className="fill-stone-900"
+                        >
+                          {settings.legendTitleAr || "مفتاح الخريطة"}
+                        </text>
+                      </g>
+
+                      {/* Render Items */}
+                      {legendItems.map((item, idx) => {
+                        const itemY = 32 + idx * 22;
+                        return (
+                          <g key={idx}>
+                            {/* Draw visual key */}
+                            {item.draw(0, itemY)}
+
+                            {/* Label */}
+                            <text
+                              x="44"
+                              y={itemY + 14}
+                              textAnchor="start"
+                              style={{ fontSize: "8.5px", fontWeight: "700", fontFamily: "sans-serif" }}
+                              className="fill-stone-800"
+                            >
+                              {item.label}
+                            </text>
+
+                            {/* Divider line */}
+                            {idx < legendItems.length - 1 && (
+                              <line
+                                x1="8"
+                                y1={itemY + 22}
+                                x2={legendWidth - 8}
+                                y2={itemY + 22}
+                                stroke="#e7e5e4"
+                                strokeWidth="0.8"
+                                strokeDasharray="2,2"
+                              />
+                            )}
+                          </g>
+                        );
+                      })}
+                    </g>
+                  );
+                })()}
 
                 {/* Cartographic Numerical Scale Directly inside grid viewBox */}
                 <g transform={`translate(${mapRight - 106}, ${mapBottom - 24})`}>

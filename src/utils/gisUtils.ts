@@ -169,3 +169,73 @@ export function calculateCentroid(vertices: Vertex[]): { x: number; y: number } 
     y: ys / vertices.length
   };
 }
+
+/**
+ * Computes left and right parallel offset polylines for a sequence of vertices in meters.
+ * Offset distance is the perpendicular distance in meters.
+ */
+export function getParallelPolylines(
+  vertices: { x: number; y: number }[],
+  offset: number
+): { left: { x: number; y: number }[]; right: { x: number; y: number }[] } {
+  if (vertices.length < 2) {
+    return { left: [...vertices], right: [...vertices] };
+  }
+
+  const left: { x: number; y: number }[] = [];
+  const right: { x: number; y: number }[] = [];
+  const n = vertices.length;
+
+  // Precompute segment normals
+  const segNormals: { x: number; y: number }[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const dx = vertices[i + 1].x - vertices[i].x;
+    const dy = vertices[i + 1].y - vertices[i].y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len > 0) {
+      // Rotate 90 deg clockwise/perpendicular to get normal
+      segNormals.push({ x: -dy / len, y: dx / len });
+    } else {
+      segNormals.push(i > 0 ? segNormals[i - 1] : { x: 0, y: 1 });
+    }
+  }
+
+  for (let i = 0; i < n; i++) {
+    let nx = 0;
+    let ny = 0;
+
+    if (i === 0) {
+      nx = segNormals[0].x;
+      ny = segNormals[0].y;
+    } else if (i === n - 1) {
+      nx = segNormals[n - 2].x;
+      ny = segNormals[n - 2].y;
+    } else {
+      // Average adjacent segments' normals
+      const n1 = segNormals[i - 1];
+      const n2 = segNormals[i];
+      const avgX = (n1.x + n2.x) / 2;
+      const avgY = (n1.y + n2.y) / 2;
+      const len = Math.sqrt(avgX * avgX + avgY * avgY);
+      if (len > 0) {
+        nx = avgX / len;
+        ny = avgY / len;
+        const dot = n1.x * nx + n1.y * ny;
+        if (dot > 0.1) {
+          const scale = 1 / dot;
+          const cappedScale = Math.min(scale, 2.5);
+          nx *= cappedScale;
+          ny *= cappedScale;
+        }
+      } else {
+        nx = n1.x;
+        ny = n1.y;
+      }
+    }
+
+    left.push({ x: vertices[i].x + offset * nx, y: vertices[i].y + offset * ny });
+    right.push({ x: vertices[i].x - offset * nx, y: vertices[i].y - offset * ny });
+  }
+
+  return { left, right };
+}

@@ -20,7 +20,7 @@ import {
   parseShapefileZip,
   parseShapefilePair,
 } from "./utils/fileParsers";
-import { translations } from "./utils/translations";
+import { translations, getLocalizedParcelName } from "./utils/translations";
 import {
   calculatePolygonArea,
   calculatePolygonPerimeter,
@@ -50,6 +50,9 @@ import {
   CheckCircle,
   HelpCircle,
   Check,
+  ChevronDown,
+  ChevronUp,
+  Milestone,
 } from "lucide-react";
 
 export default function App() {
@@ -109,10 +112,10 @@ export default function App() {
   const [viewMode, setViewMode] = useState<"map_editor" | "print_preview" | "about">("map_editor");
   const [printLayoutType, setPrintLayoutType] = useState<"type1" | "type2">("type1");
 
-  const [lang, setLang] = useState<"ar" | "fr">(() => {
+  const [lang, setLang] = useState<"ar" | "fr" | "en">(() => {
     try {
       const saved = localStorage.getItem("cadastral_language");
-      return (saved as "ar" | "fr") || "ar";
+      return (saved as "ar" | "fr" | "en") || "ar";
     } catch (_) {
       return "ar";
     }
@@ -129,6 +132,30 @@ export default function App() {
   const [selectedVertexId, setSelectedVertexId] = useState<number | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
   const [isDrawingMode, setDrawingMode] = useState<boolean>(false);
+  const [showParcelManagement, setShowParcelManagement] = useState<boolean>(false);
+
+  // Non-blocking state-based confirmation states for deletes (to work reliably inside sandboxed iframes)
+  const [pendingDeleteParcelId, setPendingDeleteParcelId] = useState<string | null>(null);
+  const [pendingDeleteSymbolIndex, setPendingDeleteSymbolIndex] = useState<number | null>(null);
+  const [pendingDeleteAllSymbols, setPendingDeleteAllSymbols] = useState<boolean>(false);
+
+  // Custom topological symbols & text placement state
+  const [symbolToPlace, setSymbolToPlace] = useState<"cemetery" | "tree" | "well" | "building" | "mosque" | "custom_text" | "palm" | "reed" | "grass" | "transformer" | "olive" | "geodetic" | "spring" | null>(null);
+  const [symbolPlacementLabel, setSymbolPlacementLabel] = useState<string>("");
+  const [localSymbolLabel, setLocalSymbolLabel] = useState<string>("");
+  const [enableSymbolLabel, setEnableSymbolLabel] = useState<boolean>(true);
+
+  // Custom linear features placement state
+  const [lineToPlace, setLineToPlace] = useState<"footpath" | "agri_road" | "power_line" | "water_pipe" | "sewer_pipe" | null>(null);
+  const [linePlacementLabel, setLinePlacementLabel] = useState<string>("");
+  const [localLineLabel, setLocalLineLabel] = useState<string>("");
+  const [enableLineLabel, setEnableLineLabel] = useState<boolean>(true);
+  const [customLineSpacing, setCustomLineSpacing] = useState<number>(4);
+  const [customLineThickness, setCustomLineThickness] = useState<number>(2);
+  const [customLineColor, setCustomLineColor] = useState<string>("");
+  const [customLabelColor, setCustomLabelColor] = useState<string>("");
+  const [customLabelSize, setCustomLabelSize] = useState<number>(9.5);
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
 
   // States for dynamic unified file imports (Source coordinates + Column naming + Parcel list)
   const [importNotification, setImportNotification] = useState<{
@@ -146,6 +173,9 @@ export default function App() {
 
   // Search query for filtering large list of imported parcels
   const [importSearchQuery, setImportSearchQuery] = useState<string>("");
+
+  // Search query for filtering placed symbols list in the active parcel
+  const [symbolSearchQuery, setSymbolSearchQuery] = useState<string>("");
 
   // Clean reset of selected columns when switcher triggers
   React.useEffect(() => {
@@ -175,6 +205,17 @@ export default function App() {
       vertexFontSize: 8.5,
       labelFontSize: 7.0,
       labelOffset: 7.0,
+      legendEnabled: true,
+      legendTitleAr: "مفتاح الخريطة",
+      legendTitleFr: "LÉGENDE",
+      legendPosition: "bottom-left",
+      legendShowBoundary: true,
+      legendBoundaryLabelAr: "حدود القطعة",
+      legendBoundaryLabelFr: "Limite de parcelle",
+      legendShowSymbols: true,
+      legendShowLines: true,
+      legendItemLabels: {},
+      legendItemVisibility: {},
     };
     try {
       const saved = localStorage.getItem("cadastral_settings");
@@ -201,6 +242,39 @@ export default function App() {
         }
         if (parsed.labelOffset === undefined) {
           parsed.labelOffset = 7.0;
+        }
+        if (parsed.legendEnabled === undefined) {
+          parsed.legendEnabled = true;
+        }
+        if (parsed.legendTitleAr === undefined) {
+          parsed.legendTitleAr = "مفتاح الخريطة";
+        }
+        if (parsed.legendTitleFr === undefined) {
+          parsed.legendTitleFr = "LÉGENDE";
+        }
+        if (parsed.legendPosition === undefined) {
+          parsed.legendPosition = "bottom-left";
+        }
+        if (parsed.legendShowBoundary === undefined) {
+          parsed.legendShowBoundary = true;
+        }
+        if (parsed.legendBoundaryLabelAr === undefined) {
+          parsed.legendBoundaryLabelAr = "حدود القطعة";
+        }
+        if (parsed.legendBoundaryLabelFr === undefined) {
+          parsed.legendBoundaryLabelFr = "Limite de parcelle";
+        }
+        if (parsed.legendShowSymbols === undefined) {
+          parsed.legendShowSymbols = true;
+        }
+        if (parsed.legendShowLines === undefined) {
+          parsed.legendShowLines = true;
+        }
+        if (parsed.legendItemLabels === undefined) {
+          parsed.legendItemLabels = {};
+        }
+        if (parsed.legendItemVisibility === undefined) {
+          parsed.legendItemVisibility = {};
         }
         return parsed;
       }
@@ -433,9 +507,7 @@ export default function App() {
 
   const selectPrimaryParcel = (pId: string) => {
     setSelectedParcelId(pId);
-    setSelectedParcelIds((prev) => {
-      return prev.includes(pId) ? prev : [...prev, pId];
-    });
+    setSelectedParcelIds([pId]);
   };
 
   React.useEffect(() => {
@@ -711,6 +783,7 @@ export default function App() {
 
       setParcels((prev) => [...prev, ...newParcels]);
       setSelectedParcelId(newParcels[0].id);
+      setSelectedParcelIds([newParcels[0].id]);
       setSelectedAttributeKey(""); // Reset column mapping selection
       setImportSearchQuery(""); // Reset search query on new import
 
@@ -863,6 +936,7 @@ export default function App() {
     };
     setParcels((prev) => [...prev, newParcel]);
     setSelectedParcelId(freshId);
+    setSelectedParcelIds([freshId]);
     setDrawingMode(true);
   };
 
@@ -928,6 +1002,16 @@ export default function App() {
             >
               Français
             </button>
+            <button
+              onClick={() => setLang("en")}
+              className={`px-3 py-1 text-[11px] rounded transition-all font-bold ${
+                lang === "en"
+                  ? "bg-emerald-600 text-white shadow-md font-sans"
+                  : "text-slate-400 hover:text-slate-200 font-sans"
+              }`}
+            >
+              English
+            </button>
           </div>
 
           {/* Active target parcel dropdown */}
@@ -940,7 +1024,7 @@ export default function App() {
             >
               {parcels.map((p) => (
                 <option key={p.id} value={p.id} className="bg-slate-800 text-slate-100">
-                  {p.name}
+                  {getLocalizedParcelName(p, lang)}
                 </option>
               ))}
             </select>
@@ -1007,6 +1091,7 @@ export default function App() {
           settings={settings}
           onBackToEditor={() => setViewMode("map_editor")}
           initialLayoutType={printLayoutType}
+          lang={lang}
         />
       ) : viewMode === "about" ? (
         <AboutPage
@@ -1167,7 +1252,25 @@ export default function App() {
                           const matchesAttrs = matchP.attributes && Object.values(matchP.attributes).some(
                             (val) => String(val).toLowerCase().includes(q)
                           );
-                          return matchesName || matchesAttrs;
+                          const matchesSymbols = matchP.symbols && matchP.symbols.some((sym) => {
+                            const label = (sym.label || "").toLowerCase();
+                            const type = (sym.type || "").toLowerCase();
+                            const arTypes = 
+                              type === "tree" ? "شجرة" :
+                              type === "well" ? "بئر" :
+                              type === "cemetery" ? "مقبرة" :
+                              type === "building" ? "بناء" :
+                              type === "mosque" ? "مسجد" :
+                              type === "palm" ? "نخيل نخلة" :
+                              type === "reed" ? "قصب" :
+                              type === "grass" ? "أعشاب عشب" :
+                              type === "transformer" ? "محول كهربائي" :
+                              type === "olive" ? "زيتون" :
+                              type === "geodetic" ? "نقطة جيوديزية جيوديزي جيوفيزيائية جيوفيزيائي" :
+                              type === "spring" ? "عين ماء" : "نص حر كتابة حرة";
+                            return label.includes(q) || type.includes(q) || arTypes.includes(q);
+                          });
+                          return matchesName || matchesAttrs || matchesSymbols;
                         });
 
                         if (filteredIds.length === 0) {
@@ -1244,6 +1347,988 @@ export default function App() {
               )}
             </div>
 
+            {/* General Parcel Management Card (Accessible at all times) */}
+            <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-700/60 flex flex-col gap-3">
+              <button
+                onClick={() => setShowParcelManagement(!showParcelManagement)}
+                className="w-full flex items-center justify-between text-xs font-extrabold text-amber-400 uppercase tracking-widest cursor-pointer focus:outline-none"
+              >
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-emerald-400" />
+                  <span>{lang === "ar" ? "إدارة وتحديد القطع الأرضية" : "Gestion des Parcelles"}</span>
+                </div>
+                <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700 flex items-center gap-1 font-sans">
+                  {showParcelManagement 
+                    ? (lang === "ar" ? "إخفاء" : "Masquer") 
+                    : (lang === "ar" ? "عرض" : "Afficher")
+                  }
+                  {showParcelManagement ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </span>
+              </button>
+              
+              {showParcelManagement && (
+                <div className="flex flex-col gap-3 mt-1">
+                  <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
+                    {lang === "ar" 
+                      ? "اختر القطع للمعاينة والطباعة المشتركة، أو حدد القطعة الرئيسية لتعديل حدودها ونقاطها." 
+                      : "Cochez pour afficher et imprimer ensemble, ou cliquez sur le nom pour définir la parcelle principale à éditer."
+                    }
+                  </p>
+                  
+                  <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-1">
+                    {parcels.map((p) => {
+                      const isActive = selectedParcelId === p.id;
+                      const isMultiSelected = selectedParcelIds.includes(p.id);
+                      return (
+                        <div
+                          key={p.id}
+                          className={`w-full rounded-lg transition flex items-center gap-2 p-2 border ${
+                            isActive 
+                              ? "bg-emerald-600/10 text-emerald-300 border-emerald-500/40 font-bold" 
+                              : isMultiSelected
+                              ? "bg-purple-950/20 text-purple-300 border-purple-500/30"
+                              : "bg-slate-900/60 hover:bg-slate-800 text-slate-300 border-slate-800/40"
+                          }`}
+                        >
+                          {/* Checkbox for multi-selection */}
+                          <button
+                            onClick={(e) => toggleParcelMultiSelect(p.id, e)}
+                            title={lang === "ar" ? "تحديد للمعاينة والطباعة المشتركة" : "Sélectionner pour aperçu et impression conjoint"}
+                            className={`flex items-center justify-center w-5 h-5 rounded border transition-all shrink-0 cursor-pointer ${
+                              isMultiSelected
+                                ? "bg-purple-600 border-purple-400 text-white"
+                                : "border-slate-700 hover:border-slate-500 bg-slate-950"
+                            }`}
+                          >
+                            {isMultiSelected && <Check className="w-3.5 h-3.5" />}
+                          </button>
+
+                          {/* Main name selector */}
+                          <button
+                            onClick={() => selectPrimaryParcel(p.id)}
+                            title={lang === "ar" ? "تعديل وتحديد رئيسي" : "Éditer et définir comme principal"}
+                            className={`flex-1 flex items-center justify-between min-h-[26px] py-0.5 px-1 focus:outline-none cursor-pointer ${
+                              lang === "ar" ? "flex-row-reverse text-right" : "flex-row text-left"
+                            }`}
+                          >
+                            <span className="font-semibold text-[10.5px] truncate max-w-[120px]">
+                              {getLocalizedParcelName(p, lang)}
+                            </span>
+                            <span className="text-[8.5px] font-mono opacity-80 shrink-0 font-bold bg-slate-950/40 px-1.5 py-0.5 rounded text-emerald-400">
+                              {p.vertices.length} قمم
+                            </span>
+                          </button>
+
+                          {/* Trash can to delete completely */}
+                          {pendingDeleteParcelId === p.id ? (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setParcels(prev => prev.filter(item => item.id !== p.id));
+                                  setSelectedParcelIds(prev => prev.filter(id => id !== p.id));
+                                  if (selectedParcelId === p.id) {
+                                    const remainingAll = parcels.filter(item => item.id !== p.id);
+                                    setSelectedParcelId(remainingAll[0].id);
+                                  }
+                                  setPendingDeleteParcelId(null);
+                                }}
+                                className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-[9.5px] px-1.5 py-0.5 rounded transition cursor-pointer animate-pulse"
+                              >
+                                {lang === "ar" ? "تأكيد" : "Confirmer"}
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPendingDeleteParcelId(null);
+                                }}
+                                className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[9.5px] px-1.5 py-0.5 rounded transition cursor-pointer"
+                              >
+                                {lang === "ar" ? "إلغاء" : "Annuler"}
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (parcels.length <= 1) {
+                                  alert(lang === "ar" ? "⚠️ يجب إبقاء قطعة أرضية واحدة على الأقل في المشروع !" : "⚠️ Vous devez garder au moins une parcelle dans le projet !");
+                                  return;
+                                }
+                                setPendingDeleteParcelId(p.id);
+                              }}
+                              className="text-slate-500 hover:text-rose-400 p-1 rounded transition shrink-0 cursor-pointer"
+                              title={lang === "ar" ? "حذف هذه القطعة نهائياً" : "Supprimer cette parcelle définitivement"}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Custom Symbols and Labels Placement Card */}
+            <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-700/60 flex flex-col gap-3">
+              <h2 className="text-xs font-extrabold text-amber-400 uppercase tracking-widest flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-emerald-400" />
+                <span>{lang === "ar" ? "الرموز والكتابة الجيوفيزيائية" : "Symboles & Étiquettes"}</span>
+              </h2>
+              <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
+                {lang === "ar"
+                  ? "أدخل اسماً أو مسمى في الحقل أسفله ثم اختر الرمز المطلوب وضعه على قطعة الأرض بالخريطة الحية."
+                  : "Saisissez un texte, puis choisissez un symbole ci-dessous pour le placer d'un simple clic sur la carte."
+                }
+              </p>
+
+              {/* Text Input for custom label */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[9.5px] text-slate-400 block font-sans">
+                    {lang === "ar" ? "الكتابة أو المسمى المصاحب للرمز :" : "Texte ou étiquette d'accompagnement :"}
+                  </label>
+                  <label className="flex items-center gap-1 text-[9.5px] text-emerald-400 font-bold cursor-pointer font-sans select-none">
+                    <input
+                      type="checkbox"
+                      checked={enableSymbolLabel}
+                      onChange={(e) => {
+                        setEnableSymbolLabel(e.target.checked);
+                        setSymbolPlacementLabel(e.target.checked ? localSymbolLabel : "");
+                      }}
+                      className="rounded bg-slate-950 border-slate-700 text-emerald-600 focus:ring-0 focus:ring-offset-0 w-3 h-3 cursor-pointer"
+                    />
+                    <span>{lang === "ar" ? "تفعيل التسمية" : "Activer l'étiquette"}</span>
+                  </label>
+                </div>
+                <input
+                  type="text"
+                  disabled={!enableSymbolLabel}
+                  placeholder={lang === "ar" ? "مثال: بئر، شجرة زيتون، المحتويات..." : "Ex: Puits, Olivier, Les contenances..."}
+                  value={localSymbolLabel}
+                  onChange={(e) => {
+                    setLocalSymbolLabel(e.target.value);
+                    if (symbolToPlace && enableSymbolLabel) {
+                      setSymbolPlacementLabel(e.target.value);
+                    }
+                  }}
+                  className={`w-full bg-slate-950 border rounded px-2.5 py-1.5 text-[11px] text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-sans transition-all ${
+                    enableSymbolLabel ? "border-slate-700 opacity-100" : "border-slate-800/40 opacity-40 cursor-not-allowed"
+                  }`}
+                />
+              </div>
+
+              {/* Grid of Symbol Choices */}
+              <div className="grid grid-cols-3 gap-1.5 mt-1">
+                {[
+                  { type: "tree", labelAr: "🌳 شجرة", labelFr: "🌳 Arbre" },
+                  { type: "well", labelAr: "🕳️ بئر", labelFr: "🕳️ Puits" },
+                  { type: "cemetery", labelAr: "🌙 مقبرة", labelFr: "🌙 Cimetière" },
+                  { type: "building", labelAr: "🏠 بناء", labelFr: "🏠 Bâtiment" },
+                  { type: "mosque", labelAr: "🕌 مسجد", labelFr: "🕌 Mosquée" },
+                  { type: "palm", labelAr: "🌴 نخيل", labelFr: "🌴 Palmier" },
+                  { type: "reed", labelAr: "🌾 قصب", labelFr: "🌾 Roseau" },
+                  { type: "grass", labelAr: "🌱 أعشاب", labelFr: "🌱 Herbes" },
+                  { type: "transformer", labelAr: "⚡ محول كهربائي", labelFr: "⚡ Transfo" },
+                  { type: "olive", labelAr: "🫒 زيتون", labelFr: "🫒 Olivier" },
+                  { type: "geodetic", labelAr: "🔺 نقطة جيوديزية", labelFr: "🔺 Pt Géodésique" },
+                  { type: "spring", labelAr: "💧 عين ماء", labelFr: "💧 Source d'eau" },
+                  { type: "custom_text", labelAr: "📝 نص حر", labelFr: "📝 Texte Libre" },
+                ].map((item) => {
+                  const isSelected = symbolToPlace === item.type;
+                  return (
+                    <button
+                      key={item.type}
+                      onClick={() => {
+                        if (isSelected) {
+                          setSymbolToPlace(null);
+                          setSymbolPlacementLabel("");
+                        } else {
+                          setSymbolToPlace(item.type as any);
+                          setLineToPlace(null); // Clear line placement mode
+                          setDrawingMode(false); // Clear polygon drawing mode
+                          
+                          // Determine the default translation
+                          const defaultArName = 
+                            item.type === "tree" ? "شجرة" :
+                            item.type === "well" ? "بئر" :
+                            item.type === "cemetery" ? "مقبرة" :
+                            item.type === "building" ? "بناء" :
+                            item.type === "mosque" ? "مسجد" :
+                            item.type === "palm" ? "نخيل" :
+                            item.type === "reed" ? "قصب" :
+                            item.type === "grass" ? "أعشاب" :
+                            item.type === "transformer" ? "محول كهربائي" :
+                            item.type === "olive" ? "زيتون" :
+                            item.type === "geodetic" ? "نقطة جيوديزية" :
+                            item.type === "spring" ? "عين ماء" : 
+                            item.type === "custom_text" ? "كتابة حرة" : "";
+                            
+                          const defaultFrName = 
+                            item.type === "tree" ? "Arbre" :
+                            item.type === "well" ? "Puits" :
+                            item.type === "cemetery" ? "Cimetière" :
+                            item.type === "building" ? "Bâtiment" :
+                            item.type === "mosque" ? "Mosquée" :
+                            item.type === "palm" ? "Palmier" :
+                            item.type === "reed" ? "Roseau" :
+                            item.type === "grass" ? "Herbes" :
+                            item.type === "transformer" ? "Transfo" :
+                            item.type === "olive" ? "Olivier" :
+                            item.type === "geodetic" ? "Pt Géodésique" :
+                            item.type === "spring" ? "Source d'eau" :
+                            item.type === "custom_text" ? "Texte Libre" : "";
+
+                          const newDefaultName = lang === "ar" ? defaultArName : defaultFrName;
+
+                          // Auto-populate input text if empty or contains a previous default label
+                          if (!localSymbolLabel.trim() || [
+                            "شجرة", "Arbre",
+                            "بئر", "Puits",
+                            "مقبرة", "Cimetière",
+                            "بناء", "Bâtiment",
+                            "مسجد", "Mosquée",
+                            "نخيل", "Palmier",
+                            "قصب", "Roseau",
+                            "أعشاب", "Herbes",
+                            "محول كهربائي", "Transfo",
+                            "زيتون", "Olivier",
+                            "نقطة جيوديزية", "Pt Géodésique",
+                            "عين ماء", "Source d'eau",
+                            "كتابة حرة", "Texte Libre", "Texte libre"
+                          ].includes(localSymbolLabel)) {
+                            setLocalSymbolLabel(newDefaultName);
+                            setSymbolPlacementLabel(enableSymbolLabel ? newDefaultName : "");
+                          } else {
+                            setSymbolPlacementLabel(enableSymbolLabel ? localSymbolLabel : "");
+                          }
+                        }
+                      }}
+                      className={`py-2 px-1 text-[10px] rounded border transition flex flex-col items-center justify-center gap-1 font-bold font-sans cursor-pointer ${
+                        isSelected
+                          ? "bg-emerald-600 border-emerald-400 text-white animate-pulse"
+                          : "bg-slate-950/70 border-slate-800 hover:bg-slate-850 hover:border-slate-700 text-slate-300"
+                      }`}
+                    >
+                      <span className="text-[10px]">
+                        {lang === "ar" ? item.labelAr : item.labelFr}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Placement Active Instruction */}
+              {symbolToPlace && (
+                <div className="mt-1.5 p-2 rounded bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-300 font-sans text-center leading-relaxed animate-pulse">
+                  {lang === "ar"
+                    ? `🎯 انقر الآن في أي مكان داخل مضلع الخريطة لوضع الرمز المصاحب بـ: "${symbolPlacementLabel || 'بدون مسمى'}"`
+                    : `🎯 Cliquez sur la carte pour déposer le symbole avec l'étiquette : "${symbolPlacementLabel || 'Aucune'}"`
+                  }
+                  <button
+                    onClick={() => {
+                      setSymbolToPlace(null);
+                      setSymbolPlacementLabel("");
+                    }}
+                    className="block text-[9px] text-red-400 hover:text-red-300 underline mt-1 mx-auto cursor-pointer"
+                  >
+                    {lang === "ar" ? "إلغاء وضع الرمز" : "Annuler le placement"}
+                  </button>
+                </div>
+              )}
+
+              {/* Placed symbols manager for current parcel */}
+              {activeParcel.symbols && activeParcel.symbols.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-slate-800">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[9.5px] font-bold text-slate-400 uppercase font-sans">
+                      {lang === "ar" ? "الرموز المدرجة بالقطعة الحالية :" : "Symboles placés sur la parcelle :"}
+                    </span>
+                    {pendingDeleteAllSymbols ? (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            setParcels(prev => prev.map(p => p.id === activeParcel.id ? { ...p, symbols: [] } : p));
+                            setPendingDeleteAllSymbols(false);
+                          }}
+                          className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-[9px] px-1.5 py-0.5 rounded transition cursor-pointer animate-pulse"
+                        >
+                          {lang === "ar" ? "تأكيد" : "Confirmer"}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            setPendingDeleteAllSymbols(false);
+                          }}
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[9px] px-1.5 py-0.5 rounded transition cursor-pointer"
+                        >
+                          {lang === "ar" ? "إلغاء" : "Annuler"}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setPendingDeleteAllSymbols(true);
+                        }}
+                        className="text-[9px] text-rose-400 hover:text-rose-300 underline font-semibold flex items-center gap-1 cursor-pointer"
+                        title={lang === "ar" ? "حذف جميع الرموز دفعة واحدة" : "Supprimer tous les symboles d'un coup"}
+                      >
+                        <Trash2 className="w-2.5 h-2.5" />
+                        <span>{lang === "ar" ? "حذف الكل" : "Tout supprimer"}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Compact Search for placed symbols */}
+                  <div className="mb-2 relative">
+                    <input
+                      type="text"
+                      placeholder={lang === "ar" ? "🔍 ابحث في الرموز المضافة..." : "🔍 Filtrer les symboles..."}
+                      value={symbolSearchQuery}
+                      onChange={(e) => setSymbolSearchQuery(e.target.value)}
+                      className={`w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-[10px] text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-sans ${
+                        lang === "ar" ? "text-right" : "text-left"
+                      }`}
+                    />
+                    {symbolSearchQuery && (
+                      <button
+                        onClick={() => setSymbolSearchQuery("")}
+                        className={`absolute text-slate-500 hover:text-slate-300 transition text-[9px] px-1 font-sans top-1/2 -translate-y-1/2 ${
+                          lang === "ar" ? "left-2" : "right-2"
+                        }`}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-1 max-h-44 overflow-y-auto pr-1">
+                    {(() => {
+                      const filteredList = activeParcel.symbols
+                        .map((sym, idx) => ({ sym, idx }))
+                        .filter(({ sym }) => {
+                          if (!symbolSearchQuery.trim()) return true;
+                          const q = symbolSearchQuery.toLowerCase();
+                          const label = (sym.label || "").toLowerCase();
+                          const type = (sym.type || "").toLowerCase();
+                          const arTypes = 
+                            type === "tree" ? "شجرة" :
+                            type === "cemetery" ? "مقبرة" :
+                            type === "well" ? "بئر" :
+                            type === "building" ? "بناء" :
+                            type === "mosque" ? "مسجد" :
+                            type === "palm" ? "نخيل نخلة" :
+                            type === "reed" ? "قصب" :
+                            type === "grass" ? "أعشاب عشب" :
+                            type === "transformer" ? "محول كهربائي" :
+                            type === "olive" ? "زيتون" :
+                            type === "geodetic" ? "نقطة جيوديزية جيوديزي جيوفيزيائية جيوفيزيائي" :
+                            type === "spring" ? "عين ماء" : "نص حر كتابة حرة";
+                          return label.includes(q) || type.includes(q) || arTypes.includes(q);
+                        });
+
+                      if (filteredList.length === 0) {
+                        return (
+                          <div className="text-center py-4 text-slate-500 text-[10px] font-sans">
+                            {lang === "ar" ? "⚠️ لا توجد رموز مطابقة" : "⚠️ Aucun symbole correspondant"}
+                          </div>
+                        );
+                      }
+
+                      return filteredList.map(({ sym, idx }) => {
+                        const type = sym.type || "custom_text";
+                        const label = 
+                          type === "tree" ? (lang === "ar" ? "شجرة" : "Arbre") :
+                          type === "cemetery" ? (lang === "ar" ? "مقبرة" : "Cimetière") :
+                          type === "well" ? (lang === "ar" ? "بئر" : "Puits") :
+                          type === "building" ? (lang === "ar" ? "بناء" : "Bâtiment") :
+                          type === "mosque" ? (lang === "ar" ? "مسجد" : "Mosquée") :
+                          type === "palm" ? (lang === "ar" ? "نخيل" : "Palmier") :
+                          type === "reed" ? (lang === "ar" ? "قصب" : "Roseau") :
+                          type === "grass" ? (lang === "ar" ? "أعشاب" : "Herbe") :
+                          type === "transformer" ? (lang === "ar" ? "محول كهربائي" : "Transformateur") :
+                          type === "olive" ? (lang === "ar" ? "زيتون" : "Olivier") :
+                          type === "geodetic" ? (lang === "ar" ? "نقطة جيوديزية" : "Point Géodésique") :
+                          type === "spring" ? (lang === "ar" ? "عين ماء" : "Source d'eau") :
+                          (lang === "ar" ? "كتابة حرة" : "Texte libre");
+
+                        const emoji = 
+                          type === "tree" ? "🌳" :
+                          type === "cemetery" ? "🌙" :
+                          type === "well" ? "🕳️" :
+                          type === "building" ? "🏠" :
+                          type === "mosque" ? "🕌" :
+                          type === "palm" ? "🌴" :
+                          type === "reed" ? "🌾" :
+                          type === "grass" ? "🌱" :
+                          type === "transformer" ? "⚡" :
+                          type === "olive" ? "𫛳" :
+                          type === "geodetic" ? "🔺" :
+                          type === "spring" ? "💧" :
+                          "📝";
+
+                        const displayLabel = sym.label ? `${label} (${sym.label})` : `${label} #${idx + 1}`;
+
+                        return (
+                          <div key={sym.id || `${sym.x}_${sym.y}_${idx}`} className="flex items-center justify-between bg-slate-950/60 p-1.5 rounded text-[10.5px] font-sans hover:bg-slate-900 transition gap-2 border border-slate-900/40">
+                            <span className="flex items-center gap-1.5 truncate flex-1 min-w-0">
+                              <span className="text-[12px] shrink-0">{emoji}</span>
+                              <span className="truncate text-slate-200 block text-right leading-tight min-w-0">
+                                <span className="font-bold text-slate-100 block truncate">{displayLabel}</span>
+                                <span className="text-[8px] text-slate-500 font-mono block">X: {sym.x.toFixed(1)}, Y: {sym.y.toFixed(1)}</span>
+                              </span>
+                            </span>
+                            {pendingDeleteSymbolIndex === idx ? (
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    const updatedSymbols = activeParcel.symbols!.filter((_, i) => i !== idx);
+                                    setParcels(prev => prev.map(p => p.id === activeParcel.id ? { ...p, symbols: updatedSymbols } : p));
+                                    setPendingDeleteSymbolIndex(null);
+                                  }}
+                                  className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-[9px] px-1.5 py-0.5 rounded transition cursor-pointer animate-pulse"
+                                >
+                                  {lang === "ar" ? "تأكيد" : "Confirmer"}
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    setPendingDeleteSymbolIndex(null);
+                                  }}
+                                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[9px] px-1 py-0.5 rounded transition cursor-pointer"
+                                >
+                                  {lang === "ar" ? "إلغاء" : "Annuler"}
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  setPendingDeleteSymbolIndex(idx);
+                                }}
+                                className="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 transition shrink-0 cursor-pointer"
+                                title={lang === "ar" ? "حذف هذا الرمز" : "Supprimer ce symbole"}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Custom Linear Features (Paths, Pipes, Lines) Card */}
+            <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-700/60 flex flex-col gap-3 animate-fade-in">
+              <h2 className="text-xs font-extrabold text-amber-400 uppercase tracking-widest flex items-center gap-2">
+                <Milestone className="w-4 h-4 text-emerald-400" />
+                <span>{lang === "ar" ? "رسم الخطوط والمسارات الطوبوغرافية" : "Tracé de Lignes & Voies"}</span>
+              </h2>
+              <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
+                {lang === "ar"
+                  ? "أدخل اسماً أو مسمى في الحقل أسفله، اختر نوع الخط، ثم اضغط على الخريطة لتحديد مساره نقطة بنقطة."
+                  : "Saisissez un nom, choisissez un type de ligne, puis cliquez sur la carte pour dessiner le tracé point par point."
+                }
+              </p>
+
+              {/* Text Input for custom label */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[9.5px] text-slate-400 block font-sans">
+                    {lang === "ar" ? "المسمى أو التسمية المصاحبة للخط :" : "Nom ou étiquette de la ligne :"}
+                  </label>
+                  <label className="flex items-center gap-1 text-[9.5px] text-emerald-400 font-bold cursor-pointer font-sans select-none">
+                    <input
+                      type="checkbox"
+                      checked={enableLineLabel}
+                      onChange={(e) => {
+                        setEnableLineLabel(e.target.checked);
+                        setLinePlacementLabel(e.target.checked ? localLineLabel : "");
+                      }}
+                      className="rounded bg-slate-950 border-slate-700 text-emerald-600 focus:ring-0 focus:ring-offset-0 w-3 h-3 cursor-pointer"
+                    />
+                    <span>{lang === "ar" ? "تفعيل التسمية" : "Activer l'étiquette"}</span>
+                  </label>
+                </div>
+                <input
+                  type="text"
+                  disabled={!enableLineLabel}
+                  placeholder={lang === "ar" ? "مثال: طريق فلاحية، طريق رجلية، أنبوب..." : "Ex: Chemin agricole, Sentier, Conduite..."}
+                  value={localLineLabel}
+                  onChange={(e) => {
+                    setLocalLineLabel(e.target.value);
+                    if (lineToPlace && enableLineLabel) {
+                      setLinePlacementLabel(e.target.value);
+                    }
+                  }}
+                  className={`w-full bg-slate-950 border rounded px-2.5 py-1.5 text-[11px] text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-sans transition-all ${
+                    enableLineLabel ? "border-slate-700 opacity-100" : "border-slate-800/40 opacity-40 cursor-not-allowed"
+                  }`}
+                />
+              </div>
+
+              {/* Grid of Line Choices */}
+              <div className="grid grid-cols-2 gap-1.5 mt-1">
+                {[
+                  { type: "footpath", labelAr: "🚶 طريق رجلية (متقطع)", labelFr: "🚶 Sentier (pointillé)" },
+                  { type: "agri_road", labelAr: "🚜 طريق فلاحية (مزدوج)", labelFr: "🚜 Chemin agricole" },
+                  { type: "power_line", labelAr: "⚡ خط تيار كهربائي", labelFr: "⚡ Ligne électrique" },
+                  { type: "water_pipe", labelAr: "💧 خط أنبوب ماء", labelFr: "💧 Conduite d'eau" },
+                  { type: "sewer_pipe", labelAr: "🚽 أنبوب تطهير سائل", labelFr: "🚽 Réseau assainissement" },
+                ].map((item) => {
+                  const isSelected = lineToPlace === item.type;
+                  return (
+                    <button
+                      key={item.type}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) {
+                          setLineToPlace(null);
+                          setLinePlacementLabel("");
+                        } else {
+                          setLineToPlace(item.type as any);
+                          setSymbolToPlace(null); // Clear symbol placement mode
+                          setDrawingMode(false); // Clear polygon drawing mode
+
+                          // Determine default colors & size
+                          const defaultColor = 
+                            item.type === "footpath" ? "#b45309" :
+                            item.type === "agri_road" ? "#78350f" :
+                            item.type === "power_line" ? "#475569" :
+                            item.type === "water_pipe" ? "#0284c7" :
+                            item.type === "sewer_pipe" ? "#7c2d12" : "#1e293b";
+                          setCustomLineColor(defaultColor);
+                          setCustomLabelColor(defaultColor);
+                          setCustomLabelSize(9.5);
+
+                          // Determine default translation
+                          const defaultArName = 
+                            item.type === "footpath" ? "طريق رجلية" :
+                            item.type === "agri_road" ? "طريق فلاحية" :
+                            item.type === "power_line" ? "خط تيار كهربائي" :
+                            item.type === "water_pipe" ? "أنبوب ماء صالح للشرب" :
+                            item.type === "sewer_pipe" ? "أنبوب تطهير السائل" : "";
+                          
+                          const defaultFrName = 
+                            item.type === "footpath" ? "Sentier" :
+                            item.type === "agri_road" ? "Chemin agricole" :
+                            item.type === "power_line" ? "Ligne électrique" :
+                            item.type === "water_pipe" ? "Conduite d'eau potable" :
+                            item.type === "sewer_pipe" ? "Réseau d'assainissement" : "";
+
+                          const newDefaultName = lang === "ar" ? defaultArName : defaultFrName;
+
+                          if (!localLineLabel.trim() || [
+                            "طريق رجلية", "Sentier",
+                            "طريق فلاحية", "Chemin agricole",
+                            "خط تيار كهربائي", "Ligne électrique",
+                            "أنبوب ماء صالح للشرب", "Conduite d'eau potable",
+                            "أنبوب تطهير السائل", "Réseau d'assainissement"
+                          ].includes(localLineLabel)) {
+                            setLocalLineLabel(newDefaultName);
+                            setLinePlacementLabel(enableLineLabel ? newDefaultName : "");
+                          } else {
+                            setLinePlacementLabel(enableLineLabel ? localLineLabel : "");
+                          }
+                        }
+                      }}
+                      className={`py-2.5 px-2 text-[10px] rounded border transition flex flex-col items-center justify-center gap-1.5 font-bold font-sans cursor-pointer ${
+                        isSelected
+                          ? "bg-emerald-600 border-emerald-400 text-white animate-pulse"
+                          : "bg-slate-950/70 border-slate-800 hover:bg-slate-850 hover:border-slate-700 text-slate-300"
+                      }`}
+                    >
+                      <span className="text-[10px] text-center">
+                        {lang === "ar" ? item.labelAr : item.labelFr}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Line properties sliders for new line drawing */}
+              {lineToPlace && (
+                <div className="bg-slate-950/40 p-2.5 rounded border border-slate-800/80 flex flex-col gap-2 mt-1 animate-fade-in">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-emerald-400 font-sans font-bold">
+                      {lang === "ar" ? "🛠️ خصائص وتنسيق الخط الجديد :" : "🛠️ Propriétés de la ligne :"}
+                    </span>
+                  </div>
+
+                  {/* Line Color Input */}
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-[9.5px] text-slate-400 font-sans whitespace-nowrap">
+                      {lang === "ar" ? "لون الخط :" : "Couleur de la ligne :"}
+                    </label>
+                    <div className="flex items-center gap-2 w-2/3">
+                      <input
+                        type="color"
+                        value={customLineColor}
+                        onChange={(e) => setCustomLineColor(e.target.value)}
+                        className="w-8 h-5 rounded cursor-pointer border border-slate-700 bg-transparent p-0"
+                      />
+                      <span className="text-[9.5px] font-mono text-emerald-400 font-bold">
+                        {customLineColor}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Thickness Input */}
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-[9.5px] text-slate-400 font-sans whitespace-nowrap">
+                      {lang === "ar" ? "سمك الخط (بكسل) :" : "Épaisseur (px) :"}
+                    </label>
+                    <div className="flex items-center gap-2 w-2/3">
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="6"
+                        step="0.5"
+                        value={customLineThickness}
+                        onChange={(e) => setCustomLineThickness(parseFloat(e.target.value))}
+                        className="w-full accent-emerald-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
+                      />
+                      <span className="text-[9.5px] font-mono text-emerald-400 font-bold shrink-0 min-w-[20px] text-right">
+                        {customLineThickness}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Spacing Input (Only for agri_road) */}
+                  {lineToPlace === "agri_road" && (
+                    <div className="flex items-center justify-between gap-3 transition-all">
+                      <label className="text-[9.5px] text-slate-400 font-sans whitespace-nowrap">
+                        {lang === "ar" ? "المسافة بين الخطين (متر) :" : "Écartement (m) :"}
+                      </label>
+                      <div className="flex items-center gap-2 w-2/3">
+                        <input
+                          type="range"
+                          min="1"
+                          max="15"
+                          step="0.5"
+                          value={customLineSpacing}
+                          onChange={(e) => setCustomLineSpacing(parseFloat(e.target.value))}
+                          className="w-full accent-emerald-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
+                        />
+                        <span className="text-[9.5px] font-mono text-emerald-400 font-bold shrink-0 min-w-[20px] text-right">
+                          {customLineSpacing}m
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Label Styling for New Line */}
+                  {enableLineLabel && (
+                    <>
+                      {/* Label Color picker */}
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="text-[9.5px] text-slate-400 font-sans whitespace-nowrap">
+                          {lang === "ar" ? "لون التسمية :" : "Couleur du texte :"}
+                        </label>
+                        <div className="flex items-center gap-2 w-2/3">
+                          <input
+                            type="color"
+                            value={customLabelColor}
+                            onChange={(e) => setCustomLabelColor(e.target.value)}
+                            className="w-8 h-5 rounded cursor-pointer border border-slate-700 bg-transparent p-0"
+                          />
+                          <span className="text-[9.5px] font-mono text-emerald-400 font-bold">
+                            {customLabelColor}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Label Font Size slider */}
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="text-[9.5px] text-slate-400 font-sans whitespace-nowrap">
+                          {lang === "ar" ? "حجم التسمية (بكسل) :" : "Taille du texte (px) :"}
+                        </label>
+                        <div className="flex items-center gap-2 w-2/3">
+                          <input
+                            type="range"
+                            min="6"
+                            max="18"
+                            step="0.5"
+                            value={customLabelSize}
+                            onChange={(e) => setCustomLabelSize(parseFloat(e.target.value))}
+                            className="w-full accent-emerald-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
+                          />
+                          <span className="text-[9.5px] font-mono text-emerald-400 font-bold shrink-0 min-w-[20px] text-right">
+                            {customLabelSize}
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Active instructions info */}
+              {lineToPlace && (
+                <div className="mt-1.5 p-2.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-[10px] text-emerald-300 font-sans text-center leading-relaxed animate-pulse">
+                  {lang === "ar"
+                    ? `🎯 انقر الآن على الخريطة لوضع نقاط الخط بالتتابع: "${linePlacementLabel || 'بدون تسمية'}"`
+                    : `🎯 Cliquez sur la carte pour définir les sommets successifs de la ligne : "${linePlacementLabel || 'Sans nom'}"`
+                  }
+                  <button
+                    onClick={() => {
+                      setLineToPlace(null);
+                      setLinePlacementLabel("");
+                    }}
+                    className="block text-[9px] text-red-400 hover:text-red-300 underline mt-1 mx-auto cursor-pointer"
+                  >
+                    {lang === "ar" ? "إلغاء وضع رسم الخط" : "Annuler le tracé"}
+                  </button>
+                </div>
+              )}
+
+              {/* List of placed linear features for current parcel with delete capabilities */}
+              {activeParcel.linearFeatures && activeParcel.linearFeatures.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-slate-800">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[9.5px] font-bold text-slate-400 uppercase font-sans">
+                      {lang === "ar" ? "الخطوط المدرجة بالقطعة الحالية :" : "Lignes et tracés placés :"}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setParcels(prev => prev.map(p => p.id === activeParcel.id ? { ...p, linearFeatures: [] } : p));
+                      }}
+                      className="text-[9px] text-rose-400 hover:text-rose-300 underline font-semibold flex items-center gap-1 cursor-pointer"
+                      title={lang === "ar" ? "حذف جميع مسارات الخطوط دفعة واحدة" : "Supprimer toutes les lignes"}
+                    >
+                      <Trash2 className="w-2.5 h-2.5" />
+                      <span>{lang === "ar" ? "حذف الكل" : "Tout supprimer"}</span>
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-1 max-h-[500px] overflow-y-auto pr-1 pb-4">
+                    {activeParcel.linearFeatures.map((lf, idx) => {
+                      const label = 
+                        lf.type === "footpath" ? (lang === "ar" ? "طريق رجلية" : "Sentier") :
+                        lf.type === "agri_road" ? (lang === "ar" ? "طريق فلاحية" : "Chemin agricole") :
+                        lf.type === "power_line" ? (lang === "ar" ? "خط تيار كهربائي" : "Ligne électrique") :
+                        lf.type === "water_pipe" ? (lang === "ar" ? "أنبوب ماء صالح للشرب" : "Conduite d'eau") :
+                        (lang === "ar" ? "أنبوب تطهير السائل" : "Réseau d'assainissement");
+
+                      const emoji = 
+                        lf.type === "footpath" ? "🚶" :
+                        lf.type === "agri_road" ? "🚜" :
+                        lf.type === "power_line" ? "⚡" :
+                        lf.type === "water_pipe" ? "💧" : "🚽";
+
+                      const displayLabel = lf.label ? `${label} (${lf.label})` : `${label} #${idx + 1}`;
+                      const isEditing = editingLineId === lf.id;
+
+                      return (
+                        <div key={lf.id || `${lf.type}_${idx}`} className="flex flex-col bg-slate-950/60 rounded text-[10.5px] font-sans border border-slate-900/40 overflow-hidden">
+                          <div className="flex items-center justify-between p-1.5 hover:bg-slate-900 transition gap-2">
+                            <span className="flex items-center gap-1.5 truncate flex-1 min-w-0">
+                              <span className="text-[12px] shrink-0">{emoji}</span>
+                              <span className="truncate text-slate-200 block text-right leading-tight min-w-0">
+                                <span className="font-bold text-slate-100 block truncate">{displayLabel}</span>
+                                <span className="text-[8px] text-slate-500 font-mono block">
+                                  {lang === "ar" ? `نقاط المسار: ${lf.vertices.length}` : `Sommets: ${lf.vertices.length}`}
+                                </span>
+                              </span>
+                            </span>
+                            
+                            <div className="flex items-center gap-1 shrink-0">
+                              {/* Edit Line Properties Toggle button */}
+                              <button
+                                onClick={() => setEditingLineId(isEditing ? null : lf.id)}
+                                className={`p-1 rounded transition cursor-pointer ${
+                                  isEditing ? "text-emerald-400 bg-emerald-500/10" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                                }`}
+                                title={lang === "ar" ? "تعديل خصائص وتنسيق الخط" : "Modifier les propriétés de la ligne"}
+                              >
+                                <Settings className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Delete button */}
+                              <button
+                                onClick={() => {
+                                  const updated = activeParcel.linearFeatures!.filter((_, i) => i !== idx);
+                                  setParcels(prev => prev.map(p => p.id === activeParcel.id ? { ...p, linearFeatures: updated } : p));
+                                  if (isEditing) setEditingLineId(null);
+                                }}
+                                className="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 transition shrink-0 cursor-pointer"
+                                title={lang === "ar" ? "حذف هذا الخط" : "Supprimer cette ligne"}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Dynamic Property Editing Panel */}
+                          {isEditing && (() => {
+                            const defaultColor = lf.type === "footpath" ? "#b45309" :
+                                                 lf.type === "agri_road" ? "#78350f" :
+                                                 lf.type === "power_line" ? "#475569" :
+                                                 lf.type === "water_pipe" ? "#0284c7" :
+                                                 lf.type === "sewer_pipe" ? "#7c2d12" :
+                                                 "#1e293b";
+                            return (
+                              <div className="bg-slate-950 p-2 border-t border-slate-900/40 flex flex-col gap-2 animate-fade-in">
+                                {/* Line Color Picker */}
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[9px] text-slate-400 font-sans">
+                                    {lang === "ar" ? "لون الخط :" : "Couleur de la ligne :"}
+                                  </span>
+                                  <div className="flex items-center gap-1.5 w-[65%]">
+                                    <input
+                                      type="color"
+                                      value={lf.color || defaultColor}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setParcels(prev => prev.map(p => p.id === activeParcel.id ? {
+                                          ...p,
+                                          linearFeatures: p.linearFeatures?.map(item => item.id === lf.id ? { ...item, color: val } : item)
+                                        } : p));
+                                      }}
+                                      className="w-8 h-5 rounded cursor-pointer border border-slate-700 bg-transparent p-0"
+                                    />
+                                    <span className="text-[9px] font-mono text-emerald-400 font-bold">
+                                      {lf.color || defaultColor}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Thickness Slider */}
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[9px] text-slate-400 font-sans">
+                                    {lang === "ar" ? "سمك الخط (بكسل) :" : "Épaisseur (px) :"}
+                                  </span>
+                                  <div className="flex items-center gap-1.5 w-[65%]">
+                                    <input
+                                      type="range"
+                                      min="0.5"
+                                      max="6"
+                                      step="0.5"
+                                      value={lf.thickness !== undefined ? lf.thickness : 2}
+                                      onChange={(e) => {
+                                        const val = parseFloat(e.target.value);
+                                        setParcels(prev => prev.map(p => p.id === activeParcel.id ? {
+                                          ...p,
+                                          linearFeatures: p.linearFeatures?.map(item => item.id === lf.id ? { ...item, thickness: val } : item)
+                                        } : p));
+                                      }}
+                                      className="w-full accent-emerald-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
+                                    />
+                                    <span className="text-[9px] font-mono text-emerald-400 font-bold w-[15px] text-right shrink-0">
+                                      {lf.thickness !== undefined ? lf.thickness : 2}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Spacing Slider (Only for agri_road) */}
+                                {lf.type === "agri_road" && (
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[9px] text-slate-400 font-sans">
+                                      {lang === "ar" ? "المسافة بين الخطين :" : "Écartement (m) :"}
+                                    </span>
+                                    <div className="flex items-center gap-1.5 w-[65%]">
+                                      <input
+                                        type="range"
+                                        min="1"
+                                        max="15"
+                                        step="0.5"
+                                        value={lf.spacing !== undefined ? lf.spacing : 4}
+                                        onChange={(e) => {
+                                          const val = parseFloat(e.target.value);
+                                          setParcels(prev => prev.map(p => p.id === activeParcel.id ? {
+                                            ...p,
+                                            linearFeatures: p.linearFeatures?.map(item => item.id === lf.id ? { ...item, spacing: val } : item)
+                                          } : p));
+                                        }}
+                                        className="w-full accent-emerald-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
+                                      />
+                                      <span className="text-[9px] font-mono text-emerald-400 font-bold w-[25px] text-right shrink-0">
+                                        {lf.spacing !== undefined ? lf.spacing : 4}m
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Label Styling Controls (only if lf.label exists) */}
+                                {lf.label && (
+                                  <>
+                                    {/* Label Text Color picker */}
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-[9px] text-slate-400 font-sans">
+                                        {lang === "ar" ? "لون التسمية :" : "Couleur du texte :"}
+                                      </span>
+                                      <div className="flex items-center gap-1.5 w-[65%]">
+                                        <input
+                                          type="color"
+                                          value={lf.labelColor || lf.color || defaultColor}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            setParcels(prev => prev.map(p => p.id === activeParcel.id ? {
+                                              ...p,
+                                              linearFeatures: p.linearFeatures?.map(item => item.id === lf.id ? { ...item, labelColor: val } : item)
+                                            } : p));
+                                          }}
+                                          className="w-8 h-5 rounded cursor-pointer border border-slate-700 bg-transparent p-0"
+                                        />
+                                        <span className="text-[9px] font-mono text-emerald-400 font-bold">
+                                          {lf.labelColor || lf.color || defaultColor}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Label Size Slider */}
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-[9px] text-slate-400 font-sans">
+                                        {lang === "ar" ? "حجم التسمية (بكسل) :" : "Taille du texte (px) :"}
+                                      </span>
+                                      <div className="flex items-center gap-1.5 w-[65%]">
+                                        <input
+                                          type="range"
+                                          min="6"
+                                          max="18"
+                                          step="0.5"
+                                          value={lf.labelSize !== undefined ? lf.labelSize : 9.5}
+                                          onChange={(e) => {
+                                            const val = parseFloat(e.target.value);
+                                            setParcels(prev => prev.map(p => p.id === activeParcel.id ? {
+                                              ...p,
+                                              linearFeatures: p.linearFeatures?.map(item => item.id === lf.id ? { ...item, labelSize: val } : item)
+                                            } : p));
+                                          }}
+                                          className="w-full accent-emerald-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
+                                        />
+                                        <span className="text-[9px] font-mono text-emerald-400 font-bold w-[25px] text-right shrink-0">
+                                          {lf.labelSize !== undefined ? lf.labelSize : 9.5}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Document Print layout customizer panel */}
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-2 border-b border-slate-700 pb-2">
@@ -1303,7 +2388,7 @@ export default function App() {
                   </label>
                   <input
                     type="text"
-                    value={activeParcel.name}
+                    value={getLocalizedParcelName(activeParcel, lang)}
                     onChange={(e) => {
                       const newName = e.target.value;
                       setParcels(prev => prev.map(p => p.id === activeParcel.id ? { ...p, name: newName } : p));
@@ -1608,6 +2693,233 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* CONFIGURATION DE LA LÉGENDE */}
+                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-700/60 space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-1">
+                    <span className="text-[9.5px] font-bold text-emerald-400 uppercase tracking-wider block">
+                      {lang === "ar" ? "تخصيص مفتاح الخريطة" : "Légende de la Carte"}
+                    </span>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settings.legendEnabled !== false}
+                        onChange={(e) => {
+                          setSettings(prev => ({ ...prev, legendEnabled: e.target.checked }));
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-7 h-4 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                  </div>
+
+                  {settings.legendEnabled !== false && (
+                    <div className="space-y-2.5 animate-fade-in text-slate-300">
+                      {/* Titles */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[9px] text-slate-400 block mb-0.5 font-mono">
+                            {lang === "ar" ? "العنوان بالعربية" : "Titre (Arabe)"}
+                          </label>
+                          <input
+                            type="text"
+                            value={settings.legendTitleAr || ""}
+                            onChange={(e) => setSettings(prev => ({ ...prev, legendTitleAr: e.target.value }))}
+                            className="w-full bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-[10px] focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] text-slate-400 block mb-0.5 font-mono">
+                            {lang === "ar" ? "العنوان بالفرنسية" : "Titre (Français)"}
+                          </label>
+                          <input
+                            type="text"
+                            value={settings.legendTitleFr || ""}
+                            onChange={(e) => setSettings(prev => ({ ...prev, legendTitleFr: e.target.value }))}
+                            className="w-full bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-[10px] focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Position */}
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5 font-mono">
+                          {lang === "ar" ? "موضع المفتاح" : "Position de la légende"}
+                        </label>
+                        <select
+                          value={settings.legendPosition || "bottom-left"}
+                          onChange={(e) => setSettings(prev => ({ ...prev, legendPosition: e.target.value as any }))}
+                          className="w-full bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-[10px] focus:ring-1 focus:ring-emerald-500 focus:outline-none text-slate-200"
+                        >
+                          <option value="bottom-left">{lang === "ar" ? "أسفل اليسار" : "En bas à gauche"}</option>
+                          <option value="bottom-right">{lang === "ar" ? "أسفل اليمين" : "En bas à droite"}</option>
+                          <option value="top-left">{lang === "ar" ? "أعلى اليسار" : "En haut à gauche"}</option>
+                          <option value="top-right">{lang === "ar" ? "أعلى اليمين" : "En haut à droite"}</option>
+                        </select>
+                      </div>
+
+                      {/* Toggle Boundary */}
+                      <div className="border-t border-slate-800 pt-2 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9.5px] font-bold text-slate-400">
+                            {lang === "ar" ? "حدود القطعة الأرضية" : "Limite de la parcelle"}
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={settings.legendShowBoundary !== false}
+                            onChange={(e) => setSettings(prev => ({ ...prev, legendShowBoundary: e.target.checked }))}
+                            className="accent-emerald-500 rounded"
+                          />
+                        </div>
+                        {settings.legendShowBoundary !== false && (
+                          <div className="grid grid-cols-2 gap-2 pl-2">
+                            <div>
+                              <input
+                                type="text"
+                                placeholder="العربية"
+                                value={settings.legendBoundaryLabelAr || ""}
+                                onChange={(e) => setSettings(prev => ({ ...prev, legendBoundaryLabelAr: e.target.value }))}
+                                className="w-full bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-[9.5px] focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <input
+                                type="text"
+                                placeholder="Français"
+                                value={settings.legendBoundaryLabelFr || ""}
+                                onChange={(e) => setSettings(prev => ({ ...prev, legendBoundaryLabelFr: e.target.value }))}
+                                className="w-full bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-[9.5px] focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Dynamic Linear Features list */}
+                      {activeParcel.linearFeatures && activeParcel.linearFeatures.length > 0 && (
+                        <div className="border-t border-slate-800 pt-2 space-y-2">
+                          <span className="text-[9.5px] font-bold text-slate-400 block">
+                            {lang === "ar" ? "تنسيق مسميات الخطوط المكتشفة :" : "Étiquettes des lignes détectées :"}
+                          </span>
+                          {Array.from(new Set(activeParcel.linearFeatures.map(lf => lf.type))).map(type => {
+                            const defaultFr = 
+                              type === "footpath" ? "Sentier" :
+                              type === "agri_road" ? "Chemin agricole" :
+                              type === "power_line" ? "Ligne électrique" :
+                              type === "water_pipe" ? "Conduite d'eau" : "Réseau d'assainissement";
+                            const defaultAr = 
+                              type === "footpath" ? "طريق رجلية" :
+                              type === "agri_road" ? "طريق فلاحية" :
+                              type === "power_line" ? "خط تيار كهربائي" :
+                              type === "water_pipe" ? "أنبوب ماء صالح للشرب" : "أنبوب تطهير السائل";
+
+                            const isVisible = settings.legendItemVisibility?.[type] !== false;
+                            const customLabel = settings.legendItemLabels?.[type] || `${defaultFr} / ${defaultAr}`;
+
+                            return (
+                              <div key={type} className="bg-slate-950/40 p-1.5 rounded border border-slate-800/80 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] font-mono text-emerald-400">
+                                    {type === "footpath" ? "🚶" : type === "agri_road" ? "🚜" : type === "power_line" ? "⚡" : type === "water_pipe" ? "💧" : "🚽"} {type}
+                                  </span>
+                                  <input
+                                    type="checkbox"
+                                    checked={isVisible}
+                                    onChange={(e) => {
+                                      const newVis = { ...(settings.legendItemVisibility || {}), [type as string]: e.target.checked };
+                                      setSettings(prev => ({ ...prev, legendItemVisibility: newVis }));
+                                    }}
+                                    className="accent-emerald-500 rounded"
+                                  />
+                                </div>
+                                {isVisible && (
+                                  <input
+                                    type="text"
+                                    value={customLabel}
+                                    onChange={(e) => {
+                                      const newLabels = { ...(settings.legendItemLabels || {}), [type as string]: e.target.value };
+                                      setSettings(prev => ({ ...prev, legendItemLabels: newLabels }));
+                                    }}
+                                    className="w-full bg-slate-950 border border-slate-850 rounded px-1.5 py-0.5 text-[9px] focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Dynamic Symbol Features list */}
+                      {activeParcel.symbols && activeParcel.symbols.filter(s => s.type !== "custom_text").length > 0 && (
+                        <div className="border-t border-slate-800 pt-2 space-y-2">
+                          <span className="text-[9.5px] font-bold text-slate-400 block">
+                            {lang === "ar" ? "تنسيق مسميات الرموز المكتشفة :" : "Étiquettes des symboles détectés :"}
+                          </span>
+                          {Array.from(new Set(activeParcel.symbols.filter(s => s.type !== "custom_text").map(s => s.type))).map(type => {
+                            const defaultFr = 
+                              type === "tree" ? "Arbre" :
+                              type === "well" ? "Puits" :
+                              type === "building" ? "Bâtiment" :
+                              type === "mosque" ? "Mosquée" :
+                              type === "palm" ? "Palmier" :
+                              type === "reed" ? "Roseau" :
+                              type === "grass" ? "Herbe" :
+                              type === "transformer" ? "Transformateur" :
+                              type === "olive" ? "Olivier" :
+                              type === "geodetic" ? "Borne" :
+                              type === "spring" ? "Source" : "Symbole";
+                            const defaultAr = 
+                              type === "tree" ? "شجرة" :
+                              type === "well" ? "بئر" :
+                              type === "building" ? "بناية" :
+                              type === "mosque" ? "مسجد" :
+                              type === "palm" ? "نخلة" :
+                              type === "reed" ? "قصب" :
+                              type === "grass" ? "عشب" :
+                              type === "transformer" ? "محول كهربائي" :
+                              type === "olive" ? "زيتون" :
+                              type === "geodetic" ? "نقطة جيوديسية" :
+                              type === "spring" ? "عين ماء" : "رمز";
+
+                            const isVisible = settings.legendItemVisibility?.[type] !== false;
+                            const customLabel = settings.legendItemLabels?.[type] || `${defaultFr} / ${defaultAr}`;
+
+                            return (
+                              <div key={type} className="bg-slate-950/40 p-1.5 rounded border border-slate-800/80 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] font-mono text-amber-400">
+                                    {type === "tree" ? "🌳" : type === "well" ? "🕳️" : type === "building" ? "🏠" : type === "mosque" ? "🕌" : type === "palm" ? "🌴" : "📍"} {type}
+                                  </span>
+                                  <input
+                                    type="checkbox"
+                                    checked={isVisible}
+                                    onChange={(e) => {
+                                      const newVis = { ...(settings.legendItemVisibility || {}), [type as string]: e.target.checked };
+                                      setSettings(prev => ({ ...prev, legendItemVisibility: newVis }));
+                                    }}
+                                    className="accent-emerald-500 rounded"
+                                  />
+                                </div>
+                                {isVisible && (
+                                  <input
+                                    type="text"
+                                    value={customLabel}
+                                    onChange={(e) => {
+                                      const newLabels = { ...(settings.legendItemLabels || {}), [type as string]: e.target.value };
+                                      setSettings(prev => ({ ...prev, legendItemLabels: newLabels }));
+                                    }}
+                                    className="w-full bg-slate-950 border border-slate-850 rounded px-1.5 py-0.5 text-[9px] focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                    </div>
+                  )}
+                </div>
+
                 {/* Custom Logo Upload */}
                 <div>
                   <div className="flex justify-between items-center mb-1">
@@ -1649,7 +2961,7 @@ export default function App() {
                     {lang === "ar" ? "المنطقة الفعالة النشطة" : "Propriété active"}
                   </span>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <h3 className="text-sm font-bold text-slate-100">{activeParcel.name}</h3>
+                    <h3 className="text-sm font-bold text-slate-100">{getLocalizedParcelName(activeParcel, lang)}</h3>
                   </div>
                 </div>
               </div>
@@ -1711,6 +3023,26 @@ export default function App() {
                   onDeleteVertex={handleDeleteVertex}
                   isDrawingMode={isDrawingMode}
                   setDrawingMode={setDrawingMode}
+                  symbolToPlace={symbolToPlace}
+                  symbolPlacementLabel={symbolPlacementLabel}
+                  onPlacedSymbolDone={() => {
+                    // Keep the symbol placement tool active for continuous multiple placements as requested by user.
+                  }}
+                  lineToPlace={lineToPlace}
+                  linePlacementLabel={linePlacementLabel}
+                  onPlacedLineDone={() => {
+                    setLineToPlace(null);
+                    setLinePlacementLabel("");
+                  }}
+                  customLineSpacing={customLineSpacing}
+                  customLineThickness={customLineThickness}
+                  customLineColor={customLineColor}
+                  customLabelColor={customLabelColor}
+                  customLabelSize={customLabelSize}
+                  lang={lang}
+                  onUpdateParcel={(updatedParcel) => {
+                    setParcels((prev) => prev.map((p) => p.id === updatedParcel.id ? updatedParcel : p));
+                  }}
                 />
               </div>
             </div>
@@ -1729,8 +3061,10 @@ export default function App() {
                         <span className={`w-2.5 h-2.5 rounded-full ${isPrimary ? 'bg-emerald-500' : 'bg-purple-500'}`}></span>
                         <h4 className="text-sm font-bold text-slate-200">
                           {lang === "ar" 
-                            ? `جداول القياسات والحدود لـ: ${p.name} ${isPrimary ? "(الرئيسية)" : "(مضافة)"}`
-                            : `Mesures et limites de : ${p.name} ${isPrimary ? "(Principale)" : "(Jointe)"}`
+                            ? `جداول القياسات والحدود لـ: ${getLocalizedParcelName(p, lang)} ${isPrimary ? "(الرئيسية)" : "(مضافة)"}`
+                            : lang === "en"
+                            ? `Measurement & boundary tables for: ${getLocalizedParcelName(p, lang)} ${isPrimary ? "(Primary)" : "(Added)"}`
+                            : `Mesures et limites de : ${getLocalizedParcelName(p, lang)} ${isPrimary ? "(Principale)" : "(Jointe)"}`
                           }
                         </h4>
                       </div>
